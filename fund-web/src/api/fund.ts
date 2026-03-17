@@ -53,6 +53,11 @@ export interface EstimateSourceData {
   sources: EstimateItem[];
 }
 
+export interface RefreshResult {
+  detail: FundDetail;
+  estimates: EstimateSourceData;
+}
+
 export const fundApi = {
   search: (keyword: string): Promise<{ list: FundSearchItem[] }> =>
     client.get('/fund/search', { params: { keyword } }),
@@ -65,4 +70,7 @@ export const fundApi = {
 
   getEstimates: (code: string): Promise<EstimateSourceData> =>
     client.get(`/fund/${code}/estimates`),
+
+  refreshData: (code: string): Promise<RefreshResult> =>
+    client.post(`/fund/${code}/refresh`),
 };

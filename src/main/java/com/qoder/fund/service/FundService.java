@@ -5,6 +5,7 @@ import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.dto.NavHistoryDTO;
+import com.qoder.fund.dto.RefreshResultDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -65,5 +66,9 @@ public class FundService {
 
     public EstimateSourceDTO getMultiSourceEstimates(String fundCode) {
         return dataAggregator.getMultiSourceEstimates(fundCode);
+    }
+
+    public RefreshResultDTO refreshFundData(String fundCode) {
+        return dataAggregator.refreshFundData(fundCode);
     }
 }

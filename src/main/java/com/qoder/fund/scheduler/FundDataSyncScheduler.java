@@ -1,10 +1,19 @@
 package com.qoder.fund.scheduler;
 
 import com.qoder.fund.datasource.EastMoneyDataSource;
+import com.qoder.fund.datasource.FundDataAggregator;
+import com.qoder.fund.dto.EstimateSourceDTO;
+import com.qoder.fund.dto.FundDetailDTO;
+import com.qoder.fund.entity.EstimatePrediction;
 import com.qoder.fund.entity.Fund;
 import com.qoder.fund.entity.FundNav;
+import com.qoder.fund.entity.Position;
+import com.qoder.fund.entity.Watchlist;
+import com.qoder.fund.mapper.EstimatePredictionMapper;
 import com.qoder.fund.mapper.FundMapper;
 import com.qoder.fund.mapper.FundNavMapper;
+import com.qoder.fund.mapper.PositionMapper;
+import com.qoder.fund.mapper.WatchlistMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,11 +22,15 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import jakarta.annotation.PostConstruct;
 
 @Slf4j
 @Component
@@ -27,7 +40,182 @@ public class FundDataSyncScheduler {
 
     private final FundMapper fundMapper;
     private final FundNavMapper fundNavMapper;
+    private final PositionMapper positionMapper;
+    private final WatchlistMapper watchlistMapper;
+    private final EstimatePredictionMapper estimatePredictionMapper;
     private final EastMoneyDataSource eastMoneyDataSource;
+    private final FundDataAggregator fundDataAggregator;
+
+    /**
+     * 应用启动时自动补偿缺失的数据
+     * 1. 补偿缺失的净值数据（最后记录日期 → 昨天）
+     * 2. 回填已有快照但未评估的预测记录
+     * 3. 重仓股超过7天未更新则刷新
+     */
+    @PostConstruct
+    public void compensateOnStartup() {
+        log.info("=== 启动数据补偿检查 ===");
+        try {
+            compensateMissingNav();
+        } catch (Exception e) {
+            log.warn("净值补偿失败", e);
+        }
+        try {
+            compensateUnevaluatedPredictions();
+        } catch (Exception e) {
+            log.warn("预测评估补偿失败", e);
+        }
+        try {
+            compensateStaleHoldings();
+        } catch (Exception e) {
+            log.warn("重仓股补偿失败", e);
+        }
+        log.info("=== 启动数据补偿完成 ===");
+    }
+
+    /**
+     * 补偿缺失的净值数据：对每个基金，从最后净值日期的下一个交易日补到昨天
+     */
+    private void compensateMissingNav() {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        while (!isTradingDay(yesterday)) {
+            yesterday = yesterday.minusDays(1);
+        }
+
+        List<Fund> funds = fundMapper.selectList(null);
+        if (funds.isEmpty()) {
+            log.info("净值补偿: 无基金数据，跳过");
+            return;
+        }
+
+        int totalCompensated = 0;
+        for (Fund fund : funds) {
+            try {
+                List<FundNav> latestNavs = fundNavMapper.selectList(
+                        new QueryWrapper<FundNav>()
+                                .eq("fund_code", fund.getCode())
+                                .orderByDesc("nav_date")
+                                .last("LIMIT 1")
+                );
+
+                LocalDate lastDate;
+                if (latestNavs.isEmpty()) {
+                    lastDate = yesterday.minusDays(7);
+                } else {
+                    lastDate = latestNavs.get(0).getNavDate();
+                }
+
+                if (!lastDate.isBefore(yesterday)) continue;
+
+                LocalDate startDate = lastDate.plusDays(1);
+                String start = startDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                String end = yesterday.format(DateTimeFormatter.ISO_LOCAL_DATE);
+
+                List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(
+                        fund.getCode(), start, end);
+
+                for (Map<String, Object> navData : navList) {
+                    saveNav(fund.getCode(), navData);
+                    totalCompensated++;
+                }
+
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("净值补偿失败: fund={}", fund.getCode(), e);
+            }
+        }
+        log.info("净值补偿完成, 补充 {} 条记录", totalCompensated);
+    }
+
+    /**
+     * 回填已有快照但未评估的预测记录（应用在14:50运行了但20:00没运行的情况）
+     */
+    private void compensateUnevaluatedPredictions() {
+        List<EstimatePrediction> pending = estimatePredictionMapper.selectList(
+                new QueryWrapper<EstimatePrediction>()
+                        .isNull("actual_return")
+                        .isNotNull("predicted_return")
+        );
+
+        if (pending.isEmpty()) {
+            log.info("预测评估补偿: 无待回填记录");
+            return;
+        }
+
+        int evaluated = 0;
+        for (EstimatePrediction prediction : pending) {
+            try {
+                List<FundNav> navs = fundNavMapper.selectList(
+                        new QueryWrapper<FundNav>()
+                                .eq("fund_code", prediction.getFundCode())
+                                .eq("nav_date", prediction.getPredictDate())
+                                .last("LIMIT 1")
+                );
+                if (navs.isEmpty()) continue;
+
+                FundNav actualNav = navs.get(0);
+                prediction.setActualNav(actualNav.getNav());
+                prediction.setActualReturn(actualNav.getDailyReturn());
+
+                if (prediction.getPredictedReturn() != null && actualNav.getDailyReturn() != null) {
+                    prediction.setReturnError(
+                            prediction.getPredictedReturn().subtract(actualNav.getDailyReturn())
+                                    .setScale(4, RoundingMode.HALF_UP)
+                    );
+                }
+
+                estimatePredictionMapper.updateById(prediction);
+                evaluated++;
+            } catch (Exception e) {
+                log.warn("预测评估补偿失败: id={}", prediction.getId(), e);
+            }
+        }
+        log.info("预测评估补偿完成, 回填 {} 条记录", evaluated);
+    }
+
+    /**
+     * 检查重仓股数据是否陈旧，超过7天未更新则触发刷新
+     */
+    private void compensateStaleHoldings() {
+        Set<String> fundCodes = getTrackedFundCodes();
+        if (fundCodes.isEmpty()) {
+            log.info("重仓股补偿: 无用户关注的基金");
+            return;
+        }
+
+        LocalDateTime threshold = LocalDateTime.now().minusDays(7);
+        int refreshed = 0;
+
+        for (String fundCode : fundCodes) {
+            try {
+                Fund fund = fundMapper.selectById(fundCode);
+                if (fund == null) continue;
+
+                if (fund.getUpdatedAt() != null && fund.getUpdatedAt().isAfter(threshold)) {
+                    continue;
+                }
+
+                FundDetailDTO detail = eastMoneyDataSource.getFundDetail(fundCode);
+                if (detail == null) continue;
+
+                fund.setTopHoldings(detail.getTopHoldings());
+                fund.setIndustryDist(detail.getIndustryDist());
+                fundMapper.updateById(fund);
+                refreshed++;
+
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("重仓股补偿失败: fund={}", fundCode, e);
+            }
+        }
+        log.info("重仓股补偿完成, 刷新 {} 只基金", refreshed);
+    }
 
     /**
      * 每交易日19:30同步净值数据
@@ -58,6 +246,83 @@ public class FundDataSyncScheduler {
     }
 
     /**
+     * 每周一20:00同步用户关注基金的重仓股和行业分布数据
+     * 基金季报更新后重仓股会变化，需要定期刷新
+     */
+    @Scheduled(cron = "0 0 20 * * MON")
+    public void syncHoldings() {
+        log.info("开始同步基金重仓股数据...");
+
+        // 收集用户持仓和自选中的所有基金代码
+        Set<String> fundCodes = new HashSet<>();
+
+        try {
+            List<Position> positions = positionMapper.selectList(null);
+            fundCodes.addAll(positions.stream()
+                    .map(Position::getFundCode)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        } catch (Exception e) {
+            log.warn("查询持仓基金列表失败", e);
+        }
+
+        try {
+            List<Watchlist> watchlists = watchlistMapper.selectList(null);
+            fundCodes.addAll(watchlists.stream()
+                    .map(Watchlist::getFundCode)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        } catch (Exception e) {
+            log.warn("查询自选基金列表失败", e);
+        }
+
+        if (fundCodes.isEmpty()) {
+            log.info("无需同步重仓股, 无用户关注的基金");
+            return;
+        }
+
+        log.info("需要同步重仓股的基金数量: {}", fundCodes.size());
+        int successCount = 0;
+
+        for (String fundCode : fundCodes) {
+            try {
+                FundDetailDTO detail = eastMoneyDataSource.getFundDetail(fundCode);
+                if (detail == null) {
+                    log.warn("获取基金详情失败, 跳过: {}", fundCode);
+                    continue;
+                }
+
+                Fund fund = fundMapper.selectById(fundCode);
+                if (fund == null) {
+                    fund = new Fund();
+                    fund.setCode(fundCode);
+                    fund.setName(detail.getName());
+                    fund.setType(detail.getType());
+                    fund.setTopHoldings(detail.getTopHoldings());
+                    fund.setIndustryDist(detail.getIndustryDist());
+                    fundMapper.insert(fund);
+                } else {
+                    fund.setTopHoldings(detail.getTopHoldings());
+                    fund.setIndustryDist(detail.getIndustryDist());
+                    fundMapper.updateById(fund);
+                }
+                successCount++;
+
+                // 请求间隔, 避免频率限制
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("重仓股同步被中断");
+                break;
+            } catch (Exception e) {
+                log.warn("同步重仓股失败: fund={}", fundCode, e);
+            }
+        }
+
+        log.info("重仓股同步完成, 成功 {}/{} 只基金", successCount, fundCodes.size());
+    }
+
+    /**
      * 判断是否为交易日 (简单判断：排除周末)
      */
     public boolean isTradingDay(LocalDate date) {
@@ -70,7 +335,6 @@ public class FundDataSyncScheduler {
             String navDate = (String) navData.get("navDate");
             if (navDate == null || navDate.isEmpty()) return;
 
-            // 检查是否已存在
             long exists = fundNavMapper.selectCount(
                     new QueryWrapper<FundNav>()
                             .eq("fund_code", fundCode)
@@ -97,5 +361,148 @@ public class FundDataSyncScheduler {
         } catch (Exception e) {
             return BigDecimal.ZERO;
         }
+    }
+
+    /**
+     * 每交易日14:50快照各数据源的估值预测
+     * 在收盘前10分钟抓取，此时估值最接近最终结果
+     */
+    @Scheduled(cron = "0 50 14 * * MON-FRI")
+    public void snapshotPredictions() {
+        if (!isTradingDay(LocalDate.now())) return;
+
+        log.info("开始快照估值预测数据...");
+        Set<String> fundCodes = getTrackedFundCodes();
+        if (fundCodes.isEmpty()) {
+            log.info("无需快照预测, 无用户关注的基金");
+            return;
+        }
+
+        LocalDate today = LocalDate.now();
+        int count = 0;
+
+        for (String fundCode : fundCodes) {
+            try {
+                EstimateSourceDTO estimates = fundDataAggregator.getMultiSourceEstimates(fundCode);
+                if (estimates == null || estimates.getSources() == null) continue;
+
+                for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                    // 只记录 eastmoney/sina/tencent/stock 四个实际数据源
+                    String key = source.getKey();
+                    if (!"eastmoney".equals(key) && !"sina".equals(key)
+                            && !"tencent".equals(key) && !"stock".equals(key)) {
+                        continue;
+                    }
+                    if (!source.isAvailable()) continue;
+
+                    // 检查是否已存在
+                    long exists = estimatePredictionMapper.selectCount(
+                            new QueryWrapper<EstimatePrediction>()
+                                    .eq("fund_code", fundCode)
+                                    .eq("source_key", key)
+                                    .eq("predict_date", today));
+                    if (exists > 0) continue;
+
+                    EstimatePrediction prediction = new EstimatePrediction();
+                    prediction.setFundCode(fundCode);
+                    prediction.setSourceKey(key);
+                    prediction.setPredictDate(today);
+                    prediction.setPredictedNav(source.getEstimateNav());
+                    prediction.setPredictedReturn(source.getEstimateReturn());
+                    estimatePredictionMapper.insert(prediction);
+                    count++;
+                }
+
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("快照预测失败: fund={}", fundCode, e);
+            }
+        }
+        log.info("估值预测快照完成, 保存 {} 条记录", count);
+    }
+
+    /**
+     * 每交易日20:00评估预测准确度
+     * 在 syncDailyNav (19:30) 之后执行，此时实际净值已入库
+     */
+    @Scheduled(cron = "0 0 20 * * MON-FRI")
+    public void evaluatePredictionAccuracy() {
+        if (!isTradingDay(LocalDate.now())) return;
+
+        log.info("开始评估预测准确度...");
+        LocalDate today = LocalDate.now();
+
+        // 查询今日所有未评估的预测记录
+        List<EstimatePrediction> pendingPredictions = estimatePredictionMapper.selectList(
+                new QueryWrapper<EstimatePrediction>()
+                        .eq("predict_date", today)
+                        .isNull("actual_return")
+        );
+
+        if (pendingPredictions.isEmpty()) {
+            log.info("无待评估的预测记录");
+            return;
+        }
+
+        int evaluated = 0;
+        for (EstimatePrediction prediction : pendingPredictions) {
+            try {
+                // 查询该基金今日的实际净值
+                List<FundNav> navs = fundNavMapper.selectList(
+                        new QueryWrapper<FundNav>()
+                                .eq("fund_code", prediction.getFundCode())
+                                .eq("nav_date", today)
+                                .last("LIMIT 1")
+                );
+                if (navs.isEmpty()) continue;
+
+                FundNav actualNav = navs.get(0);
+                prediction.setActualNav(actualNav.getNav());
+                prediction.setActualReturn(actualNav.getDailyReturn());
+
+                // 计算误差 = 预测涨跌幅 - 实际涨跌幅
+                if (prediction.getPredictedReturn() != null && actualNav.getDailyReturn() != null) {
+                    prediction.setReturnError(
+                            prediction.getPredictedReturn().subtract(actualNav.getDailyReturn())
+                                    .setScale(4, RoundingMode.HALF_UP)
+                    );
+                }
+
+                estimatePredictionMapper.updateById(prediction);
+                evaluated++;
+            } catch (Exception e) {
+                log.warn("评估预测准确度失败: id={}, fund={}", prediction.getId(), prediction.getFundCode(), e);
+            }
+        }
+        log.info("预测准确度评估完成, 评估 {} 条记录", evaluated);
+    }
+
+    /**
+     * 获取用户持仓和自选中的所有基金代码
+     */
+    private Set<String> getTrackedFundCodes() {
+        Set<String> fundCodes = new HashSet<>();
+        try {
+            List<Position> positions = positionMapper.selectList(null);
+            fundCodes.addAll(positions.stream()
+                    .map(Position::getFundCode)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        } catch (Exception e) {
+            log.warn("查询持仓基金列表失败", e);
+        }
+        try {
+            List<Watchlist> watchlists = watchlistMapper.selectList(null);
+            fundCodes.addAll(watchlists.stream()
+                    .map(Watchlist::getFundCode)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+        } catch (Exception e) {
+            log.warn("查询自选基金列表失败", e);
+        }
+        return fundCodes;
     }
 }

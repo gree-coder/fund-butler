@@ -52,17 +52,23 @@ public class StockEstimateDataSource {
 
             List<Map<String, Object>> holdings = fund.getTopHoldings();
 
-            // 2. 提取股票代码
+            // 2. 提取股票代码 (仅A股，跳过港股等非A股)
             List<String> stockCodes = new ArrayList<>();
             Map<String, BigDecimal> ratioMap = new HashMap<>();
             for (Map<String, Object> h : holdings) {
                 String stockCode = String.valueOf(h.get("stockCode"));
                 BigDecimal ratio = toBigDecimal(h.get("ratio"));
-                if (stockCode != null && !stockCode.isEmpty() && ratio.compareTo(BigDecimal.ZERO) > 0) {
-                    String formattedCode = formatStockCode(stockCode);
-                    stockCodes.add(formattedCode);
-                    ratioMap.put(formattedCode, ratio);
+                if (stockCode == null || stockCode.isEmpty() || ratio.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
                 }
+
+                String formattedCode = formatStockCode(stockCode);
+                if (formattedCode.isEmpty()) {
+                    log.debug("跳过非A股: code={}, fund={}", stockCode, fundCode);
+                    continue;
+                }
+                stockCodes.add(formattedCode);
+                ratioMap.put(formattedCode, ratio);
             }
 
             if (stockCodes.isEmpty()) return result;
@@ -126,11 +132,15 @@ public class StockEstimateDataSource {
                     if (diffs.isArray()) {
                         for (JsonNode diff : diffs) {
                             String code = diff.path("f12").asText("");
-                            BigDecimal change = parseBigDecimal(diff.path("f3").asText(""));
+                            // f3 的单位是百分之一 (如 -468 表示 -4.68%)，需要除以100
+                            BigDecimal rawChange = parseBigDecimal(diff.path("f3").asText(""));
+                            BigDecimal change = rawChange.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+
                             if (!code.isEmpty()) {
-                                // 查找匹配的完整代码
+                                // 精确匹配: fullCode 格式为 "1.600519"，code 为 "600519"
                                 for (String fullCode : stockCodes) {
-                                    if (fullCode.contains(code)) {
+                                    String suffix = fullCode.contains(".") ? fullCode.substring(fullCode.indexOf('.') + 1) : fullCode;
+                                    if (suffix.equals(code)) {
                                         returns.put(fullCode, change);
                                         break;
                                     }
@@ -147,20 +157,36 @@ public class StockEstimateDataSource {
     }
 
     /**
-     * 格式化股票代码为东财格式: 1.600519 (沪) / 0.000001 (深)
+     * 格式化股票代码为东财格式
+     * 沪A: 1.600519 (6开头)
+     * 深A: 0.300170 (0/3开头, 6位数字)
+     * 科创板: 1.688xxx
+     * 港股/其他: 返回空字符串 (不参与计算)
      */
     private String formatStockCode(String code) {
         if (code == null) return "";
         code = code.trim();
-        if (code.contains(".")) {
-            // 已经有市场前缀
-            if (code.startsWith("6")) return "1." + code;
-            if (code.startsWith("0") || code.startsWith("3")) return "0." + code;
-            return code;
+
+        // 去掉可能的市场前缀 (如 "SH600519" -> "600519")
+        if (code.startsWith("SH") || code.startsWith("SZ")) {
+            code = code.substring(2);
         }
-        if (code.startsWith("6")) return "1." + code;
-        if (code.startsWith("0") || code.startsWith("3")) return "0." + code;
-        return "1." + code;
+
+        // 必须是纯数字
+        if (!code.matches("\\d+")) return "";
+
+        // 港股: 5位数字且以0开头 (如 00700, 09988, 01179)
+        if (code.length() == 5 && code.startsWith("0")) {
+            return "";
+        }
+
+        // 标准6位A股代码
+        if (code.length() == 6) {
+            if (code.startsWith("6")) return "1." + code;  // 沪市
+            if (code.startsWith("0") || code.startsWith("3")) return "0." + code;  // 深市
+        }
+
+        return "";
     }
 
     private BigDecimal toBigDecimal(Object value) {

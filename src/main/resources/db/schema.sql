@@ -75,3 +75,18 @@ CREATE TABLE IF NOT EXISTS watchlist (
     UNIQUE KEY uk_fund_group (fund_code, group_name),
     INDEX idx_group (group_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自选基金';
+
+-- 估值预测准确度追踪
+CREATE TABLE IF NOT EXISTS estimate_prediction (
+    id              BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    fund_code       VARCHAR(10)   NOT NULL COMMENT '基金代码',
+    source_key      VARCHAR(20)   NOT NULL COMMENT '数据源: eastmoney/sina/tencent/stock',
+    predict_date    DATE          NOT NULL COMMENT '预测日期',
+    predicted_nav   DECIMAL(10,4) COMMENT '预测净值',
+    predicted_return DECIMAL(8,4) COMMENT '预测涨跌幅(%)',
+    actual_nav      DECIMAL(10,4) COMMENT '实际净值',
+    actual_return   DECIMAL(8,4)  COMMENT '实际涨跌幅(%)',
+    return_error    DECIMAL(8,4)  COMMENT '涨跌幅误差(预测-实际)',
+    UNIQUE KEY uk_fund_source_date (fund_code, source_key, predict_date),
+    INDEX idx_fund_date (fund_code, predict_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='估值预测准确度追踪';

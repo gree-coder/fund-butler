@@ -5,6 +5,7 @@ import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.dto.NavHistoryDTO;
+import com.qoder.fund.dto.RefreshResultDTO;
 import com.qoder.fund.service.FundService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -47,5 +48,14 @@ public class FundController {
     @GetMapping("/{code}/estimates")
     public Result<EstimateSourceDTO> getEstimates(@PathVariable String code) {
         return Result.success(fundService.getMultiSourceEstimates(code));
+    }
+
+    @PostMapping("/{code}/refresh")
+    public Result<RefreshResultDTO> refresh(@PathVariable String code) {
+        RefreshResultDTO result = fundService.refreshFundData(code);
+        if (result == null || result.getDetail() == null) {
+            return Result.error(404, "基金不存在");
+        }
+        return Result.success(result);
     }
 }

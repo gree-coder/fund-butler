@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Spin, Button, Space, Tooltip, message } from 'antd';
-import { StarOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Spin, Button, Space, Tooltip, Dropdown, message } from 'antd';
+import { StarOutlined, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { fundApi, type FundDetail as FundDetailType } from '../../api/fund';
+import { fundApi, type FundDetail as FundDetailType, type EstimateItem } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
 import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
@@ -24,6 +24,9 @@ const FundDetail: React.FC = () => {
   const [navValues, setNavValues] = useState<number[]>([]);
   const [period, setPeriod] = useState('3m');
   const [loading, setLoading] = useState(true);
+  const [estimateSources, setEstimateSources] = useState<EstimateItem[]>([]);
+  const [activeEstimate, setActiveEstimate] = useState<EstimateItem | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,6 +47,43 @@ const FundDetail: React.FC = () => {
       })
       .catch(() => {});
   }, [code, period]);
+
+  useEffect(() => {
+    if (!code) return;
+    fundApi.getEstimates(code)
+      .then((res) => {
+        const sources = res.sources || [];
+        setEstimateSources(sources);
+        // 优先级: actual > smart > 第一个可用源
+        const actual = sources.find((s) => s.key === 'actual' && s.available);
+        const smart = sources.find((s) => s.key === 'smart' && s.available);
+        const first = sources.find((s) => s.available);
+        setActiveEstimate(actual || smart || first || null);
+      })
+      .catch(() => {});
+  }, [code]);
+
+  const handleRefresh = async () => {
+    if (!code) return;
+    setRefreshing(true);
+    try {
+      const result = await fundApi.refreshData(code);
+      if (result.detail) setDetail(result.detail);
+      if (result.estimates?.sources) {
+        const sources = result.estimates.sources;
+        setEstimateSources(sources);
+        const actual = sources.find((s) => s.key === 'actual' && s.available);
+        const smart = sources.find((s) => s.key === 'smart' && s.available);
+        const first = sources.find((s) => s.available);
+        setActiveEstimate(actual || smart || first || null);
+      }
+      message.success('数据已刷新');
+    } catch {
+      message.error('刷新失败');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading || !detail) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
 
@@ -143,6 +183,7 @@ const FundDetail: React.FC = () => {
           </Col>
         </Row>
         <Space style={{ marginTop: 12 }}>
+          <Button icon={<ReloadOutlined />} loading={refreshing} onClick={handleRefresh}>刷新数据</Button>
           <Button icon={<StarOutlined />} onClick={() => {
             watchlistApi.add({ fundCode: detail.code }).then(() => message.success('已添加到自选')).catch(() => {});
           }}>加自选</Button>
@@ -211,21 +252,5 @@ const FundDetail: React.FC = () => {
     </div>
   );
 };
-
-export default FundDetail;
-          <Descriptions.Item label="基金经理">{detail.manager}</Descriptions.Item>
-          <Descriptions.Item label="成立日期">{detail.establishDate}</Descriptions.Item>
-          <Descriptions.Item label="基金规模">{detail.scale ? `${formatAmount(detail.scale)}亿` : '--'}</Descriptions.Item>
-          <Descriptions.Item label="风险等级">{['', '低', '中低', '中', '中高', '高'][detail.riskLevel] || '--'}</Descriptions.Item>
-          <Descriptions.Item label="申购费">{detail.feeRate?.purchaseRate ?? '--'}</Descriptions.Item>
-          <Descriptions.Item label="管理费">{detail.feeRate?.managementFee ?? '--'}</Descriptions.Item>
-          <Descriptions.Item label="托管费">{detail.feeRate?.custodyFee ?? '--'}</Descriptions.Item>
-        </Descriptions>
-      </Card>
-    </div>
-  );
-};
-
-export default FundDetail;
 
 export default FundDetail;

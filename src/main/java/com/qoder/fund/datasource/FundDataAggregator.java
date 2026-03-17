@@ -3,17 +3,25 @@ package com.qoder.fund.datasource;
 import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
+import com.qoder.fund.dto.RefreshResultDTO;
+import com.qoder.fund.entity.EstimatePrediction;
 import com.qoder.fund.entity.Fund;
 import com.qoder.fund.entity.FundNav;
+import com.qoder.fund.mapper.EstimatePredictionMapper;
 import com.qoder.fund.mapper.FundMapper;
 import com.qoder.fund.mapper.FundNavMapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -27,8 +35,12 @@ public class FundDataAggregator {
 
     private final EastMoneyDataSource eastMoneyDataSource;
     private final StockEstimateDataSource stockEstimateDataSource;
+    private final SinaDataSource sinaDataSource;
+    private final TencentDataSource tencentDataSource;
     private final FundMapper fundMapper;
     private final FundNavMapper fundNavMapper;
+    private final EstimatePredictionMapper estimatePredictionMapper;
+    private final CacheManager cacheManager;
 
     /**
      * 搜索基金(带缓存)
@@ -84,7 +96,6 @@ public class FundDataAggregator {
         log.info("使用股票兜底估值: {}", fundCode);
         Fund fund = fundMapper.selectById(fundCode);
         if (fund != null) {
-            // 获取最新净值
             BigDecimal lastNav = getLatestNav(fundCode);
             if (lastNav != null && lastNav.compareTo(BigDecimal.ZERO) > 0) {
                 return stockEstimateDataSource.estimateByStocks(fundCode, lastNav);
@@ -115,12 +126,11 @@ public class FundDataAggregator {
 
         // 2. 数据库无数据时，从API获取最新一条净值
         try {
-            List<java.util.Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(fundCode, "", "");
+            List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(fundCode, "", "");
             if (!navList.isEmpty()) {
-                java.util.Map<String, Object> latest = navList.get(navList.size() - 1);
+                Map<String, Object> latest = navList.get(navList.size() - 1);
                 BigDecimal nav = (BigDecimal) latest.get("nav");
                 String navDate = (String) latest.get("navDate");
-                // 同时写入数据库以便后续缓存
                 if (nav != null && nav.compareTo(BigDecimal.ZERO) > 0 && navDate != null) {
                     try {
                         FundNav fundNav = new FundNav();
@@ -131,7 +141,6 @@ public class FundDataAggregator {
                         fundNav.setDailyReturn((BigDecimal) latest.get("dailyReturn"));
                         fundNavMapper.insert(fundNav);
                     } catch (Exception ignored) {
-                        // 可能重复插入，忽略
                     }
                 }
                 return nav;
@@ -144,6 +153,22 @@ public class FundDataAggregator {
     }
 
     /**
+     * 手动刷新基金数据 (清除缓存后重新获取)
+     */
+    public RefreshResultDTO refreshFundData(String fundCode) {
+        evictCache("fundDetail", fundCode);
+        evictCache("estimateNav", fundCode);
+
+        FundDetailDTO detail = getFundDetail(fundCode);
+        EstimateSourceDTO estimates = getMultiSourceEstimates(fundCode);
+
+        RefreshResultDTO result = new RefreshResultDTO();
+        result.setDetail(detail);
+        result.setEstimates(estimates);
+        return result;
+    }
+
+    /**
      * 获取多数据源估值（供前端切换数据源使用）
      */
     public EstimateSourceDTO getMultiSourceEstimates(String fundCode) {
@@ -151,6 +176,12 @@ public class FundDataAggregator {
         List<EstimateSourceDTO.EstimateItem> sources = new ArrayList<>();
 
         BigDecimal lastNav = getLatestNav(fundCode);
+
+        // 数据源0: 检查今日实际净值是否已发布
+        EstimateSourceDTO.EstimateItem actualItem = buildActualSource(fundCode);
+        if (actualItem != null) {
+            sources.add(actualItem);
+        }
 
         // 数据源1: 天天基金实时估值
         EstimateSourceDTO.EstimateItem eastMoneyItem = new EstimateSourceDTO.EstimateItem();
@@ -172,7 +203,47 @@ public class FundDataAggregator {
         }
         sources.add(eastMoneyItem);
 
-        // 数据源2: 基于重仓股实时行情加权估算
+        // 数据源2: 新浪财经实时估值
+        EstimateSourceDTO.EstimateItem sinaItem = new EstimateSourceDTO.EstimateItem();
+        sinaItem.setKey("sina");
+        sinaItem.setLabel("新浪财经估值");
+        sinaItem.setDescription("数据来自新浪财经基金估值接口");
+        try {
+            Map<String, Object> sinaEstimate = sinaDataSource.getEstimateNav(fundCode);
+            if (sinaEstimate != null && !sinaEstimate.isEmpty() && sinaEstimate.get("estimateNav") != null) {
+                sinaItem.setEstimateNav((BigDecimal) sinaEstimate.get("estimateNav"));
+                sinaItem.setEstimateReturn((BigDecimal) sinaEstimate.get("estimateReturn"));
+                sinaItem.setAvailable(true);
+            } else {
+                sinaItem.setAvailable(false);
+            }
+        } catch (Exception e) {
+            log.warn("新浪财经估值获取失败: {}", fundCode, e);
+            sinaItem.setAvailable(false);
+        }
+        sources.add(sinaItem);
+
+        // 数据源3: 腾讯财经实时估值
+        EstimateSourceDTO.EstimateItem tencentItem = new EstimateSourceDTO.EstimateItem();
+        tencentItem.setKey("tencent");
+        tencentItem.setLabel("腾讯财经估值");
+        tencentItem.setDescription("数据来自腾讯财经基金估值接口");
+        try {
+            Map<String, Object> tencentEstimate = tencentDataSource.getEstimateNav(fundCode);
+            if (tencentEstimate != null && !tencentEstimate.isEmpty() && tencentEstimate.get("estimateNav") != null) {
+                tencentItem.setEstimateNav((BigDecimal) tencentEstimate.get("estimateNav"));
+                tencentItem.setEstimateReturn((BigDecimal) tencentEstimate.get("estimateReturn"));
+                tencentItem.setAvailable(true);
+            } else {
+                tencentItem.setAvailable(false);
+            }
+        } catch (Exception e) {
+            log.warn("腾讯财经估值获取失败: {}", fundCode, e);
+            tencentItem.setAvailable(false);
+        }
+        sources.add(tencentItem);
+
+        // 数据源4: 基于重仓股实时行情加权估算
         EstimateSourceDTO.EstimateItem stockItem = new EstimateSourceDTO.EstimateItem();
         stockItem.setKey("stock");
         stockItem.setLabel("重仓股加权估算");
@@ -196,46 +267,36 @@ public class FundDataAggregator {
         }
         sources.add(stockItem);
 
-        // 数据源3: 智能综合预估
+        // 数据源5: 智能综合预估 (基于准确度选源，若实际净值已发布则直接使用)
         EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
         smartItem.setKey("smart");
         smartItem.setLabel("智能综合预估");
-        smartItem.setDescription("综合多数据源加权平均，天天基金权重60%，重仓股权重40%");
-        List<BigDecimal> navValues = new ArrayList<>();
-        List<BigDecimal> returnValues = new ArrayList<>();
-        List<BigDecimal> weights = new ArrayList<>();
 
-        if (eastMoneyItem.isAvailable()) {
-            navValues.add(eastMoneyItem.getEstimateNav());
-            returnValues.add(eastMoneyItem.getEstimateReturn());
-            weights.add(new BigDecimal("0.6"));
-        }
-        if (stockItem.isAvailable()) {
-            navValues.add(stockItem.getEstimateNav());
-            returnValues.add(stockItem.getEstimateReturn());
-            weights.add(new BigDecimal("0.4"));
-        }
-
-        if (!navValues.isEmpty()) {
-            // 归一化权重
-            BigDecimal totalWeight = weights.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal weightedNav = BigDecimal.ZERO;
-            BigDecimal weightedReturn = BigDecimal.ZERO;
-            for (int i = 0; i < navValues.size(); i++) {
-                BigDecimal normalizedWeight = weights.get(i).divide(totalWeight, 6, RoundingMode.HALF_UP);
-                weightedNav = weightedNav.add(navValues.get(i).multiply(normalizedWeight));
-                weightedReturn = weightedReturn.add(returnValues.get(i).multiply(normalizedWeight));
-            }
-            smartItem.setEstimateNav(weightedNav.setScale(4, RoundingMode.HALF_UP));
-            smartItem.setEstimateReturn(weightedReturn.setScale(2, RoundingMode.HALF_UP));
+        if (actualItem != null && actualItem.isAvailable()) {
+            // 实际净值已发布，智能综合直接使用实际值
+            smartItem.setDescription("今日实际净值已发布");
+            smartItem.setEstimateNav(actualItem.getEstimateNav());
+            smartItem.setEstimateReturn(actualItem.getEstimateReturn());
             smartItem.setAvailable(true);
         } else {
-            smartItem.setAvailable(false);
+            // 基于准确度选择最佳数据源
+            buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem);
         }
         sources.add(smartItem);
 
         result.setSources(sources);
         return result;
+    }
+
+    private void evictCache(String cacheName, String key) {
+        try {
+            Cache cache = cacheManager.getCache(cacheName);
+            if (cache != null) {
+                cache.evict(key);
+            }
+        } catch (Exception e) {
+            log.warn("清除缓存失败: cache={}, key={}", cacheName, key, e);
+        }
     }
 
     private void tryStockEstimate(String fundCode, FundDetailDTO detail) {
@@ -291,5 +352,156 @@ public class FundDataAggregator {
         } catch (Exception e) {
             log.warn("保存基金信息失败: {}", detail.getCode(), e);
         }
+    }
+
+    /**
+     * 构建"实际净值"数据源：检查 fund_nav 表中今日是否已有实际净值
+     */
+    private EstimateSourceDTO.EstimateItem buildActualSource(String fundCode) {
+        try {
+            LocalDate today = LocalDate.now();
+            DayOfWeek dow = today.getDayOfWeek();
+            if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) {
+                return null;
+            }
+
+            List<FundNav> navs = fundNavMapper.selectList(
+                    new QueryWrapper<FundNav>()
+                            .eq("fund_code", fundCode)
+                            .eq("nav_date", today)
+                            .last("LIMIT 1")
+            );
+            if (navs.isEmpty()) {
+                return null;
+            }
+
+            FundNav todayNav = navs.get(0);
+            EstimateSourceDTO.EstimateItem item = new EstimateSourceDTO.EstimateItem();
+            item.setKey("actual");
+            item.setLabel("今日实际净值");
+            item.setDescription("今日净值已发布 (来自基金公司官方数据)");
+            item.setEstimateNav(todayNav.getNav());
+            item.setEstimateReturn(todayNav.getDailyReturn() != null ? todayNav.getDailyReturn() : BigDecimal.ZERO);
+            item.setAvailable(true);
+            return item;
+        } catch (Exception e) {
+            log.warn("查询今日实际净值失败: {}", fundCode, e);
+            return null;
+        }
+    }
+
+    /**
+     * 基于准确度选择最佳数据源构建智能预估
+     * 查询最近3个交易日的预测记录，计算各源MAE，选MAE最小的源
+     * 若历史数据不足3条，回退到固定权重加权平均
+     */
+    private void buildSmartEstimate(String fundCode,
+                                    EstimateSourceDTO.EstimateItem eastMoneyItem,
+                                    EstimateSourceDTO.EstimateItem sinaItem,
+                                    EstimateSourceDTO.EstimateItem tencentItem,
+                                    EstimateSourceDTO.EstimateItem stockItem,
+                                    EstimateSourceDTO.EstimateItem smartItem) {
+        Map<String, EstimateSourceDTO.EstimateItem> availableSources = new LinkedHashMap<>();
+        if (eastMoneyItem.isAvailable()) availableSources.put("eastmoney", eastMoneyItem);
+        if (sinaItem.isAvailable()) availableSources.put("sina", sinaItem);
+        if (tencentItem.isAvailable()) availableSources.put("tencent", tencentItem);
+        if (stockItem.isAvailable()) availableSources.put("stock", stockItem);
+
+        if (availableSources.isEmpty()) {
+            smartItem.setAvailable(false);
+            smartItem.setDescription("无可用数据源");
+            return;
+        }
+
+        // 尝试基于准确度选源
+        try {
+            String bestSource = findBestSourceByAccuracy(fundCode, availableSources.keySet());
+            if (bestSource != null && availableSources.containsKey(bestSource)) {
+                EstimateSourceDTO.EstimateItem best = availableSources.get(bestSource);
+                smartItem.setEstimateNav(best.getEstimateNav());
+                smartItem.setEstimateReturn(best.getEstimateReturn());
+                smartItem.setAvailable(true);
+                smartItem.setDescription("基于近3日准确度选择: " + best.getLabel());
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("准确度选源失败，回退到加权平均: {}", fundCode, e);
+        }
+
+        // 回退: 固定权重加权平均
+        Map<String, BigDecimal> defaultWeights = new LinkedHashMap<>();
+        defaultWeights.put("eastmoney", new BigDecimal("0.35"));
+        defaultWeights.put("sina", new BigDecimal("0.25"));
+        defaultWeights.put("tencent", new BigDecimal("0.20"));
+        defaultWeights.put("stock", new BigDecimal("0.20"));
+
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        BigDecimal weightedNav = BigDecimal.ZERO;
+        BigDecimal weightedReturn = BigDecimal.ZERO;
+
+        for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
+            BigDecimal w = defaultWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            totalWeight = totalWeight.add(w);
+            weightedNav = weightedNav.add(entry.getValue().getEstimateNav().multiply(w));
+            weightedReturn = weightedReturn.add(entry.getValue().getEstimateReturn().multiply(w));
+        }
+
+        smartItem.setEstimateNav(weightedNav.divide(totalWeight, 4, RoundingMode.HALF_UP));
+        smartItem.setEstimateReturn(weightedReturn.divide(totalWeight, 2, RoundingMode.HALF_UP));
+        smartItem.setAvailable(true);
+        smartItem.setDescription("综合多数据源加权平均 (准确度数据不足，使用默认权重)");
+    }
+
+    /**
+     * 查询 estimate_prediction 表中有完整评估数据的最近3条记录，计算各源MAE，返回最佳源key
+     * 自动跳过没有快照的日期（无记录即跳过），取往前推能获取到数据的3天
+     */
+    private String findBestSourceByAccuracy(String fundCode, Set<String> sourceKeys) {
+        List<EstimatePrediction> predictions = estimatePredictionMapper.selectList(
+                new QueryWrapper<EstimatePrediction>()
+                        .eq("fund_code", fundCode)
+                        .isNotNull("actual_return")
+                        .in("source_key", sourceKeys)
+                        .orderByDesc("predict_date")
+        );
+
+        if (predictions.isEmpty()) {
+            return null;
+        }
+
+        // 按 source_key 分组计算 MAE
+        Map<String, List<EstimatePrediction>> bySource = new LinkedHashMap<>();
+        for (EstimatePrediction p : predictions) {
+            bySource.computeIfAbsent(p.getSourceKey(), k -> new ArrayList<>()).add(p);
+        }
+
+        String bestSource = null;
+        BigDecimal bestMae = null;
+        int minRecords = 3;
+
+        for (Map.Entry<String, List<EstimatePrediction>> entry : bySource.entrySet()) {
+            List<EstimatePrediction> records = entry.getValue();
+            List<EstimatePrediction> recent = records.size() > minRecords ? records.subList(0, minRecords) : records;
+            if (recent.size() < minRecords) {
+                continue;
+            }
+
+            BigDecimal sumError = BigDecimal.ZERO;
+            for (EstimatePrediction p : recent) {
+                BigDecimal error = p.getReturnError() != null ? p.getReturnError().abs() : BigDecimal.ZERO;
+                sumError = sumError.add(error);
+            }
+            BigDecimal mae = sumError.divide(new BigDecimal(recent.size()), 4, RoundingMode.HALF_UP);
+
+            if (bestMae == null || mae.compareTo(bestMae) < 0) {
+                bestMae = mae;
+                bestSource = entry.getKey();
+            }
+        }
+
+        if (bestSource != null) {
+            log.info("基金{}准确度选源: {} (MAE={})", fundCode, bestSource, bestMae);
+        }
+        return bestSource;
     }
 }
