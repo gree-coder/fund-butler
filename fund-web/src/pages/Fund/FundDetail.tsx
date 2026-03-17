@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Spin, Button, Space, message } from 'antd';
-import { StarOutlined, PlusOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Spin, Button, Space, Tooltip, message } from 'antd';
+import { StarOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { fundApi, type FundDetail as FundDetailType } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
@@ -69,6 +69,7 @@ const FundDetail: React.FC = () => {
     { title: '股票代码', dataIndex: 'stockCode' },
     { title: '股票名称', dataIndex: 'stockName' },
     { title: '占比(%)', dataIndex: 'ratio', render: (v: number) => `${v}%` },
+    { title: '今日涨跌', dataIndex: 'changePercent', render: (v: number) => v != null ? <PriceChange value={v} /> : '--' },
   ];
 
   const industryOption = {
@@ -96,9 +97,46 @@ const FundDetail: React.FC = () => {
               <div style={{ fontSize: 12, color: '#999' }}>
                 最新净值 ({detail.latestNavDate})
                 <span style={{ marginLeft: 8 }}>
-                  估值 <span style={{ color: getProfitColor(detail.estimateReturn) }}>
-                    {formatNav(detail.estimateNav)} ({formatPercent(detail.estimateReturn)})
+                  估值{' '}
+                  <span style={{ color: getProfitColor(activeEstimate?.estimateReturn ?? detail.estimateReturn) }}>
+                    {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)} ({formatPercent(activeEstimate?.estimateReturn ?? detail.estimateReturn)})
                   </span>
+                  {estimateSources.length > 0 ? (
+                    <Dropdown
+                      menu={{
+                        items: estimateSources.map((s) => ({
+                          key: s.key,
+                          label: (
+                            <div>
+                              <div style={{ fontWeight: activeEstimate?.key === s.key ? 600 : 400 }}>
+                                {s.label} {!s.available && <Tag color="default" style={{ fontSize: 10 }}>不可用</Tag>}
+                              </div>
+                              {s.available && (
+                                <div style={{ fontSize: 11, color: '#666' }}>
+                                  {formatNav(s.estimateNav)} ({formatPercent(s.estimateReturn)})
+                                </div>
+                              )}
+                              <div style={{ fontSize: 11, color: '#999' }}>{s.description}</div>
+                            </div>
+                          ),
+                          disabled: !s.available,
+                        })),
+                        onClick: ({ key }) => {
+                          const source = estimateSources.find((s) => s.key === key);
+                          if (source) setActiveEstimate(source);
+                        },
+                      }}
+                      trigger={['click']}
+                    >
+                      <span style={{ marginLeft: 4, color: '#1677ff', cursor: 'pointer', fontSize: 12 }}>
+                        {activeEstimate?.label ?? '切换数据源'} <DownOutlined style={{ fontSize: 10 }} />
+                      </span>
+                    </Dropdown>
+                  ) : detail.estimateSource ? (
+                    <Tooltip title={`数据来源: ${detail.estimateSource}`}>
+                      <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', cursor: 'pointer' }} />
+                    </Tooltip>
+                  ) : null}
                 </span>
               </div>
             </div>
@@ -129,7 +167,7 @@ const FundDetail: React.FC = () => {
             <Table columns={holdingColumns} dataSource={detail.topHoldings || []} pagination={false} rowKey="stockCode" size="small" />
           </Card>
         </Col>
-        {/* Industry Distribution */}
+        {/* Industry Distribution + Sector Changes */}
         <Col span={12}>
           <Card title="行业分布" style={{ marginBottom: 16 }}>
             {detail.industryDist && detail.industryDist.length > 0
@@ -137,6 +175,21 @@ const FundDetail: React.FC = () => {
               : <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>暂无数据</div>
             }
           </Card>
+          {detail.sectorChanges && detail.sectorChanges.length > 0 && (
+            <Card title="关联行业板块今日涨幅" size="small" style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {detail.sectorChanges.map((s) => (
+                  <Tag
+                    key={s.sectorName}
+                    color={s.changePercent > 0 ? 'red' : s.changePercent < 0 ? 'green' : 'default'}
+                    style={{ fontSize: 13, padding: '4px 8px' }}
+                  >
+                    {s.sectorName} <span style={{ fontWeight: 600 }}>{s.changePercent > 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%</span>
+                  </Tag>
+                ))}
+              </div>
+            </Card>
+          )}
         </Col>
       </Row>
 
@@ -158,5 +211,21 @@ const FundDetail: React.FC = () => {
     </div>
   );
 };
+
+export default FundDetail;
+          <Descriptions.Item label="基金经理">{detail.manager}</Descriptions.Item>
+          <Descriptions.Item label="成立日期">{detail.establishDate}</Descriptions.Item>
+          <Descriptions.Item label="基金规模">{detail.scale ? `${formatAmount(detail.scale)}亿` : '--'}</Descriptions.Item>
+          <Descriptions.Item label="风险等级">{['', '低', '中低', '中', '中高', '高'][detail.riskLevel] || '--'}</Descriptions.Item>
+          <Descriptions.Item label="申购费">{detail.feeRate?.purchaseRate ?? '--'}</Descriptions.Item>
+          <Descriptions.Item label="管理费">{detail.feeRate?.managementFee ?? '--'}</Descriptions.Item>
+          <Descriptions.Item label="托管费">{detail.feeRate?.custodyFee ?? '--'}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+    </div>
+  );
+};
+
+export default FundDetail;
 
 export default FundDetail;

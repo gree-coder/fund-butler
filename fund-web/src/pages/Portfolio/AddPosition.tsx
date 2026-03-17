@@ -32,12 +32,17 @@ const AddPosition: React.FC = () => {
   const handleSubmit = async (values: Record<string, unknown>) => {
     setSubmitting(true);
     try {
+      const holdingAmount = values.amount as number;
+      const profit = values.profit as number;
+      const shares = values.shares as number;
+      const costAmount = holdingAmount - profit;
+      const price = shares > 0 ? costAmount / shares : 0;
       await positionApi.add({
         fundCode: values.fundCode as string,
         accountId: values.accountId as number,
-        amount: values.amount as number,
-        shares: values.shares as number,
-        price: values.price as number,
+        amount: costAmount,
+        shares,
+        price,
         tradeDate: (values.tradeDate as dayjs.Dayjs).format('YYYY-MM-DD'),
       });
       message.success('添加成功');
@@ -61,14 +66,14 @@ const AddPosition: React.FC = () => {
         <Form.Item name="accountId" label="所属账户" rules={[{ required: true, message: '请选择账户' }]}>
           <Select placeholder="选择账户" options={accounts.map((a) => ({ value: a.id, label: a.name }))} />
         </Form.Item>
-        <Form.Item name="amount" label="买入金额(元)" rules={[{ required: true, message: '请输入金额' }]}>
-          <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="输入买入金额" />
+        <Form.Item name="amount" label="持有金额(元)" rules={[{ required: true, message: '请输入持有金额' }]}>
+          <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="当前持有的总金额" />
         </Form.Item>
-        <Form.Item name="shares" label="买入份额" rules={[{ required: true, message: '请输入份额' }]}>
-          <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="输入买入份额" />
+        <Form.Item name="profit" label="持有收益(元)" rules={[{ required: true, message: '请输入持有收益' }]}>
+          <InputNumber style={{ width: '100%' }} precision={2} placeholder="当前持有收益，亏损填负数" />
         </Form.Item>
-        <Form.Item name="price" label="成交净值" rules={[{ required: true, message: '请输入净值' }]}>
-          <InputNumber style={{ width: '100%' }} min={0} precision={4} step={0.0001} placeholder="输入成交净值" />
+        <Form.Item name="shares" label="持有份额" rules={[{ required: true, message: '请输入份额' }]}>
+          <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="当前持有的份额" />
         </Form.Item>
         <Form.Item name="tradeDate" label="交易日期" rules={[{ required: true, message: '请选择日期' }]}>
           <DatePicker style={{ width: '100%' }} />

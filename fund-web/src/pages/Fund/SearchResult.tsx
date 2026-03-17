@@ -6,6 +6,7 @@ import { fundApi, type FundSearchItem } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
 import { formatFundType } from '../../utils/format';
 import { message } from 'antd';
+import { useSearchStore } from '../../store/searchStore';
 
 const SearchResult: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -13,12 +14,22 @@ const SearchResult: React.FC = () => {
   const [results, setResults] = useState<FundSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const searchStore = useSearchStore();
 
   useEffect(() => {
     if (!keyword) return;
+    // If store has cached results for same keyword, use them
+    if (searchStore.keyword === keyword && searchStore.results.length > 0) {
+      setResults(searchStore.results);
+      return;
+    }
     setLoading(true);
     fundApi.search(keyword)
-      .then((res) => setResults(res.list || []))
+      .then((res) => {
+        const list = res.list || [];
+        setResults(list);
+        searchStore.setSearch(keyword, list);
+      })
       .catch(() => setResults([]))
       .finally(() => setLoading(false));
   }, [keyword]);

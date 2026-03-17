@@ -15,13 +15,15 @@ export interface FundDetail {
   establishDate: string;
   scale: number;
   riskLevel: number;
-  feeRate: { buy: number; sell: number; manage: number; custody: number };
-  topHoldings: { stockCode: string; stockName: string; ratio: number }[];
+  feeRate: { purchaseRate?: string; discountRate?: string; managementFee?: string; custodyFee?: string };
+  topHoldings: { stockCode: string; stockName: string; ratio: number; changePercent?: number; currentPrice?: number; industry?: string }[];
   industryDist: { industry: string; ratio: number }[];
+  sectorChanges: { sectorName: string; changePercent: number }[];
   latestNav: number;
   latestNavDate: string;
   estimateNav: number;
   estimateReturn: number;
+  estimateSource: string;
   performance: {
     week1: number;
     month1: number;
@@ -38,6 +40,19 @@ export interface NavHistory {
   navs: number[];
 }
 
+export interface EstimateItem {
+  key: string;
+  label: string;
+  estimateNav: number;
+  estimateReturn: number;
+  available: boolean;
+  description: string;
+}
+
+export interface EstimateSourceData {
+  sources: EstimateItem[];
+}
+
 export const fundApi = {
   search: (keyword: string): Promise<{ list: FundSearchItem[] }> =>
     client.get('/fund/search', { params: { keyword } }),
@@ -47,4 +62,7 @@ export const fundApi = {
 
   getNavHistory: (code: string, period: string): Promise<NavHistory> =>
     client.get(`/fund/${code}/nav-history`, { params: { period } }),
+
+  getEstimates: (code: string): Promise<EstimateSourceData> =>
+    client.get(`/fund/${code}/estimates`),
 };

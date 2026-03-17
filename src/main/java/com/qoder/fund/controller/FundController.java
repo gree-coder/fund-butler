@@ -1,6 +1,7 @@
 package com.qoder.fund.controller;
 
 import com.qoder.fund.common.Result;
+import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.dto.NavHistoryDTO;
@@ -41,5 +42,10 @@ public class FundController {
             @PathVariable String code,
             @RequestParam(defaultValue = "3m") String period) {
         return Result.success(fundService.getNavHistory(code, period));
+    }
+
+    @GetMapping("/{code}/estimates")
+    public Result<EstimateSourceDTO> getEstimates(@PathVariable String code) {
+        return Result.success(fundService.getMultiSourceEstimates(code));
     }
 }

@@ -390,6 +390,7 @@ public class EastMoneyDataSource implements FundDataSource {
             if (!estimate.isEmpty()) {
                 dto.setEstimateNav((BigDecimal) estimate.get("estimateNav"));
                 dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
+                dto.setEstimateSource("天天基金实时估值");
             }
         } catch (Exception e) {
             log.warn("获取净值失败: code={}", fundCode, e);
@@ -448,10 +449,149 @@ public class EastMoneyDataSource implements FundDataSource {
                 }
                 if (!holdings.isEmpty()) {
                     dto.setTopHoldings(holdings);
+                    // 丰富持仓数据：实时涨跌幅、行业信息、行业分布
+                    enrichHoldingsWithRealtime(dto);
                 }
             }
         } catch (Exception e) {
             log.warn("获取持仓失败: code={}", fundCode, e);
+        }
+    }
+
+    /**
+     * 通过东财股票实时行情API丰富持仓数据：
+     * 1. 每只股票的实时涨跌幅和当前价格 (Task 7)
+     * 2. 每只股票所属行业 → 聚合行业分布 (Task 3)
+     * 3. 行业板块预估涨幅 (Task 5)
+     */
+    private void enrichHoldingsWithRealtime(FundDetailDTO dto) {
+        List<Map<String, Object>> holdings = dto.getTopHoldings();
+        if (holdings == null || holdings.isEmpty()) return;
+
+        try {
+            // 构造股票代码列表 (东财格式: 1.600519, 0.000568)
+            List<String> secIds = new ArrayList<>();
+            Map<String, String> codeToSecId = new HashMap<>();
+            for (Map<String, Object> h : holdings) {
+                String code = String.valueOf(h.get("stockCode"));
+                String secId = formatStockCodeForApi(code);
+                secIds.add(secId);
+                codeToSecId.put(code, secId);
+            }
+
+            // 调用东财实时行情API: f2=现价, f3=涨跌幅, f12=代码, f14=名称, f100=行业
+            String codes = String.join(",", secIds);
+            String url = "https://push2.eastmoney.com/api/qt/ulist.np/get?"
+                    + "fields=f2,f3,f12,f14,f100&secids=" + codes;
+            String body = httpGetWithReferer(url);
+            if (body == null) return;
+
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode diffs = root.path("data").path("diff");
+            if (!diffs.isArray()) return;
+
+            // 构建 股票代码 → {涨跌幅, 当前价, 行业} 的映射
+            Map<String, BigDecimal> codeToChange = new HashMap<>();
+            Map<String, BigDecimal> codeToPrice = new HashMap<>();
+            Map<String, String> codeToIndustry = new HashMap<>();
+            for (JsonNode diff : diffs) {
+                String stockCode = diff.path("f12").asText("");
+                // 东财API返回的f3(涨跌幅)和f2(现价)都是*100后的整数值
+                BigDecimal changePercent = parseBigDecimal(diff.path("f3").asText(""))
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                BigDecimal currentPrice = parseBigDecimal(diff.path("f2").asText(""))
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                String industry = diff.path("f100").asText("");
+                if (!stockCode.isEmpty()) {
+                    codeToChange.put(stockCode, changePercent);
+                    codeToPrice.put(stockCode, currentPrice);
+                    if (!industry.isEmpty() && !industry.equals("-")) {
+                        codeToIndustry.put(stockCode, industry);
+                    }
+                }
+            }
+
+            // Task 7: 为每只持仓股票添加实时涨跌幅和当前价格
+            // Task 3: 同时按行业聚合持仓比例
+            // Task 5: 同时按行业加权计算板块涨幅
+            Map<String, BigDecimal> industryRatioMap = new LinkedHashMap<>();
+            Map<String, BigDecimal> industryWeightedChange = new LinkedHashMap<>();
+            for (Map<String, Object> h : holdings) {
+                String code = String.valueOf(h.get("stockCode"));
+                BigDecimal change = codeToChange.getOrDefault(code, null);
+                BigDecimal price = codeToPrice.getOrDefault(code, null);
+                String industry = codeToIndustry.getOrDefault(code, null);
+
+                if (change != null) h.put("changePercent", change);
+                if (price != null && price.compareTo(BigDecimal.ZERO) > 0) h.put("currentPrice", price);
+                if (industry != null) {
+                    h.put("industry", industry);
+                    BigDecimal ratio = toBigDecimal(h.get("ratio"));
+                    industryRatioMap.merge(industry, ratio, BigDecimal::add);
+                    if (change != null) {
+                        industryWeightedChange.merge(industry, change.multiply(ratio), BigDecimal::add);
+                    }
+                }
+            }
+
+            // Task 3: 生成行业分布数据
+            if (!industryRatioMap.isEmpty()) {
+                List<Map<String, Object>> industryDist = new ArrayList<>();
+                industryRatioMap.entrySet().stream()
+                        .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                        .forEach(entry -> {
+                            Map<String, Object> item = new HashMap<>();
+                            item.put("industry", entry.getKey());
+                            item.put("ratio", entry.getValue());
+                            industryDist.add(item);
+                        });
+                dto.setIndustryDist(industryDist);
+            }
+
+            // Task 5: 基于持仓股票实时涨幅加权计算行业板块涨幅
+            if (!industryWeightedChange.isEmpty()) {
+                List<Map<String, Object>> sectorChanges = new ArrayList<>();
+                industryRatioMap.entrySet().stream()
+                        .sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                        .forEach(entry -> {
+                            String industry = entry.getKey();
+                            BigDecimal totalRatio = entry.getValue();
+                            BigDecimal weightedSum = industryWeightedChange.getOrDefault(industry, BigDecimal.ZERO);
+                            BigDecimal avgChange = totalRatio.compareTo(BigDecimal.ZERO) > 0
+                                    ? weightedSum.divide(totalRatio, 2, RoundingMode.HALF_UP)
+                                    : BigDecimal.ZERO;
+                            Map<String, Object> item = new HashMap<>();
+                            item.put("sectorName", industry);
+                            item.put("changePercent", avgChange);
+                            sectorChanges.add(item);
+                        });
+                dto.setSectorChanges(sectorChanges);
+            }
+
+        } catch (Exception e) {
+            log.warn("丰富持仓实时数据失败: code={}", dto.getCode(), e);
+        }
+    }
+
+    private String formatStockCodeForApi(String code) {
+        if (code == null) return "";
+        code = code.trim();
+        // A股代码固定6位: 6开头=沪市(1.), 0或3开头=深市(0.)
+        if (code.length() == 6) {
+            if (code.startsWith("6")) return "1." + code;
+            if (code.startsWith("0") || code.startsWith("3")) return "0." + code;
+        }
+        // 港股: 4-5位数字, 使用116.前缀
+        if (code.matches("\\d{4,5}")) return "116." + code;
+        return "1." + code;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) return BigDecimal.ZERO;
+        try {
+            return new BigDecimal(value.toString().replace("%", "").trim());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
         }
     }
 

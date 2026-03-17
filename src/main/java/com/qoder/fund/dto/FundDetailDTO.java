@@ -23,7 +23,9 @@ public class FundDetailDTO {
     private String latestNavDate;
     private BigDecimal estimateNav;
     private BigDecimal estimateReturn;
+    private String estimateSource;
     private PerformanceDTO performance;
+    private List<Map<String, Object>> sectorChanges;
 
     @Data
     public static class PerformanceDTO {

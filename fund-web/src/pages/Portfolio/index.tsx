@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Tabs, Button, Spin } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Card, Tabs, Button, Spin, Popconfirm, Modal, Form, Select, InputNumber, DatePicker, message } from 'antd';
+import { PlusOutlined, DeleteOutlined, TransactionOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import ReactECharts from 'echarts-for-react';
-import { positionApi, accountApi, type AccountItem } from '../../api/position';
+import dayjs from 'dayjs';
+import { positionApi, accountApi, type AccountItem, type AddTransactionParams } from '../../api/position';
 import type { PositionItem } from '../../api/dashboard';
-import { formatAmount, formatPercent, getProfitColor, formatFundType } from '../../utils/format';
+import { formatAmount, getProfitColor, formatFundType } from '../../utils/format';
 import { useAmountVisible } from '../../hooks/useAmountVisible';
 import PriceChange from '../../components/PriceChange';
 import EmptyGuide from '../../components/EmptyGuide';
@@ -15,7 +16,11 @@ const Portfolio: React.FC = () => {
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [activeAccount, setActiveAccount] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const { visible, toggle, mask } = useAmountVisible();
+  const [txModalOpen, setTxModalOpen] = useState(false);
+  const [txPositionId, setTxPositionId] = useState<number | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
+  const [txForm] = Form.useForm();
+  const { visible } = useAmountVisible();
   const navigate = useNavigate();
 
   const loadData = () => {
@@ -30,6 +35,45 @@ const Portfolio: React.FC = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  const handleDelete = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    positionApi.remove(id).then(() => {
+      message.success('已删除');
+      loadData();
+    }).catch(() => {});
+  };
+
+  const openTxModal = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTxPositionId(id);
+    txForm.resetFields();
+    setTxModalOpen(true);
+  };
+
+  const handleTxSubmit = async () => {
+    if (txPositionId == null) return;
+    try {
+      const values = await txForm.validateFields();
+      setTxLoading(true);
+      const data: AddTransactionParams = {
+        type: values.type,
+        amount: values.amount,
+        shares: values.shares,
+        price: values.price,
+        fee: values.fee || 0,
+        tradeDate: values.tradeDate.format('YYYY-MM-DD'),
+      };
+      await positionApi.addTransaction(txPositionId, data);
+      message.success('交易记录已添加');
+      setTxModalOpen(false);
+      loadData();
+    } catch {
+      // validation or API error handled by interceptor
+    } finally {
+      setTxLoading(false);
+    }
+  };
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (positions.length === 0) return <EmptyGuide />;
@@ -80,17 +124,36 @@ const Portfolio: React.FC = () => {
               <div style={{ fontWeight: 500 }}>{p.fundName}</div>
               <div style={{ fontSize: 12, color: '#999' }}>{p.fundCode} | {p.accountName}</div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div>{visible ? `¥${formatAmount(p.marketValue)}` : '****'}</div>
-              <div style={{ fontSize: 12 }}>
-                <span style={{ color: '#999' }}>持有收益 </span>
-                <span style={{ color: getProfitColor(p.profit) }}>
-                  {visible ? `¥${formatAmount(p.profit)}` : '****'}
-                </span>
-                <PriceChange value={p.profitRate} style={{ marginLeft: 4 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div>{visible ? `¥${formatAmount(p.marketValue)}` : '****'}</div>
+                <div style={{ fontSize: 12 }}>
+                  <span style={{ color: '#999' }}>持有收益 </span>
+                  <span style={{ color: getProfitColor(p.profit) }}>
+                    {visible ? `¥${formatAmount(p.profit)}` : '****'}
+                  </span>
+                  <PriceChange value={p.profitRate} style={{ marginLeft: 4 }} />
+                </div>
+                <div style={{ fontSize: 12, color: '#999' }}>
+                  今日估值 <PriceChange value={p.estimateReturn} />
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: '#999' }}>
-                今日估值 <PriceChange value={p.estimateReturn} />
+              <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="small"
+                  icon={<TransactionOutlined />}
+                  onClick={(e) => openTxModal(p.id, e)}
+                >
+                  交易
+                </Button>
+                <Popconfirm
+                  title="确定删除该持仓？"
+                  description="删除后关联的交易记录也会一并删除"
+                  onConfirm={(e) => handleDelete(p.id, e as unknown as React.MouseEvent)}
+                  onCancel={(e) => e?.stopPropagation()}
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
+                </Popconfirm>
               </div>
             </div>
           </div>
@@ -100,6 +163,41 @@ const Portfolio: React.FC = () => {
       <Card title="资产分布">
         <ReactECharts option={pieOption} style={{ height: 300 }} />
       </Card>
+
+      {/* Transaction Modal */}
+      <Modal
+        title="添加交易记录"
+        open={txModalOpen}
+        onOk={handleTxSubmit}
+        onCancel={() => setTxModalOpen(false)}
+        confirmLoading={txLoading}
+        destroyOnClose
+      >
+        <Form form={txForm} layout="vertical" initialValues={{ type: 'BUY', tradeDate: dayjs() }}>
+          <Form.Item name="type" label="交易类型" rules={[{ required: true }]}>
+            <Select options={[
+              { value: 'BUY', label: '买入(加仓)' },
+              { value: 'SELL', label: '卖出(减仓)' },
+              { value: 'DIVIDEND', label: '分红' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="amount" label="交易金额(元)" rules={[{ required: true, message: '请输入交易金额' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="请输入金额" />
+          </Form.Item>
+          <Form.Item name="shares" label="交易份额" rules={[{ required: true, message: '请输入交易份额' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="请输入份额" />
+          </Form.Item>
+          <Form.Item name="price" label="成交净值" rules={[{ required: true, message: '请输入成交净值' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={4} placeholder="请输入净值" />
+          </Form.Item>
+          <Form.Item name="fee" label="手续费(元)">
+            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="选填" />
+          </Form.Item>
+          <Form.Item name="tradeDate" label="交易日期" rules={[{ required: true, message: '请选择日期' }]}>
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

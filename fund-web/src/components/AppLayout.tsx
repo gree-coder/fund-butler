@@ -22,11 +22,13 @@ const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const selectedKey = menuItems.find((item) =>
-    item.key === '/'
-      ? location.pathname === '/'
-      : location.pathname.startsWith(item.key),
-  )?.key || '/';
+  const selectedKey = location.pathname.startsWith('/fund/')
+    ? '/search'
+    : menuItems.find((item) =>
+        item.key === '/'
+          ? location.pathname === '/'
+          : location.pathname.startsWith(item.key),
+      )?.key || '/';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

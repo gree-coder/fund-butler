@@ -1,6 +1,7 @@
 package com.qoder.fund.service;
 
 import com.qoder.fund.datasource.FundDataAggregator;
+import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.dto.NavHistoryDTO;
@@ -60,5 +61,9 @@ public class FundService {
         dto.setDates(dates);
         dto.setNavs(navs);
         return dto;
+    }
+
+    public EstimateSourceDTO getMultiSourceEstimates(String fundCode) {
+        return dataAggregator.getMultiSourceEstimates(fundCode);
     }
 }

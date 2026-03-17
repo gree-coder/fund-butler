@@ -1,5 +1,6 @@
 package com.qoder.fund.datasource;
 
+import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.entity.Fund;
@@ -12,6 +13,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 
 /**
@@ -141,6 +143,101 @@ public class FundDataAggregator {
         return null;
     }
 
+    /**
+     * 获取多数据源估值（供前端切换数据源使用）
+     */
+    public EstimateSourceDTO getMultiSourceEstimates(String fundCode) {
+        EstimateSourceDTO result = new EstimateSourceDTO();
+        List<EstimateSourceDTO.EstimateItem> sources = new ArrayList<>();
+
+        BigDecimal lastNav = getLatestNav(fundCode);
+
+        // 数据源1: 天天基金实时估值
+        EstimateSourceDTO.EstimateItem eastMoneyItem = new EstimateSourceDTO.EstimateItem();
+        eastMoneyItem.setKey("eastmoney");
+        eastMoneyItem.setLabel("天天基金实时估值");
+        eastMoneyItem.setDescription("数据来自天天基金官方估值接口");
+        try {
+            Map<String, Object> emEstimate = eastMoneyDataSource.getEstimateNav(fundCode);
+            if (emEstimate != null && !emEstimate.isEmpty() && emEstimate.get("estimateNav") != null) {
+                eastMoneyItem.setEstimateNav((BigDecimal) emEstimate.get("estimateNav"));
+                eastMoneyItem.setEstimateReturn((BigDecimal) emEstimate.get("estimateReturn"));
+                eastMoneyItem.setAvailable(true);
+            } else {
+                eastMoneyItem.setAvailable(false);
+            }
+        } catch (Exception e) {
+            log.warn("天天基金估值获取失败: {}", fundCode, e);
+            eastMoneyItem.setAvailable(false);
+        }
+        sources.add(eastMoneyItem);
+
+        // 数据源2: 基于重仓股实时行情加权估算
+        EstimateSourceDTO.EstimateItem stockItem = new EstimateSourceDTO.EstimateItem();
+        stockItem.setKey("stock");
+        stockItem.setLabel("重仓股加权估算");
+        stockItem.setDescription("基于基金重仓股的实时行情加权计算");
+        try {
+            if (lastNav != null && lastNav.compareTo(BigDecimal.ZERO) > 0) {
+                Map<String, Object> stockEstimate = stockEstimateDataSource.estimateByStocks(fundCode, lastNav);
+                if (stockEstimate != null && !stockEstimate.isEmpty() && stockEstimate.get("estimateNav") != null) {
+                    stockItem.setEstimateNav((BigDecimal) stockEstimate.get("estimateNav"));
+                    stockItem.setEstimateReturn((BigDecimal) stockEstimate.get("estimateReturn"));
+                    stockItem.setAvailable(true);
+                } else {
+                    stockItem.setAvailable(false);
+                }
+            } else {
+                stockItem.setAvailable(false);
+            }
+        } catch (Exception e) {
+            log.warn("重仓股估值获取失败: {}", fundCode, e);
+            stockItem.setAvailable(false);
+        }
+        sources.add(stockItem);
+
+        // 数据源3: 智能综合预估
+        EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
+        smartItem.setKey("smart");
+        smartItem.setLabel("智能综合预估");
+        smartItem.setDescription("综合多数据源加权平均，天天基金权重60%，重仓股权重40%");
+        List<BigDecimal> navValues = new ArrayList<>();
+        List<BigDecimal> returnValues = new ArrayList<>();
+        List<BigDecimal> weights = new ArrayList<>();
+
+        if (eastMoneyItem.isAvailable()) {
+            navValues.add(eastMoneyItem.getEstimateNav());
+            returnValues.add(eastMoneyItem.getEstimateReturn());
+            weights.add(new BigDecimal("0.6"));
+        }
+        if (stockItem.isAvailable()) {
+            navValues.add(stockItem.getEstimateNav());
+            returnValues.add(stockItem.getEstimateReturn());
+            weights.add(new BigDecimal("0.4"));
+        }
+
+        if (!navValues.isEmpty()) {
+            // 归一化权重
+            BigDecimal totalWeight = weights.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal weightedNav = BigDecimal.ZERO;
+            BigDecimal weightedReturn = BigDecimal.ZERO;
+            for (int i = 0; i < navValues.size(); i++) {
+                BigDecimal normalizedWeight = weights.get(i).divide(totalWeight, 6, RoundingMode.HALF_UP);
+                weightedNav = weightedNav.add(navValues.get(i).multiply(normalizedWeight));
+                weightedReturn = weightedReturn.add(returnValues.get(i).multiply(normalizedWeight));
+            }
+            smartItem.setEstimateNav(weightedNav.setScale(4, RoundingMode.HALF_UP));
+            smartItem.setEstimateReturn(weightedReturn.setScale(2, RoundingMode.HALF_UP));
+            smartItem.setAvailable(true);
+        } else {
+            smartItem.setAvailable(false);
+        }
+        sources.add(smartItem);
+
+        result.setSources(sources);
+        return result;
+    }
+
     private void tryStockEstimate(String fundCode, FundDetailDTO detail) {
         try {
             BigDecimal lastNav = detail.getLatestNav();
@@ -152,6 +249,7 @@ public class FundDataAggregator {
                 if (!stockEstimate.isEmpty()) {
                     detail.setEstimateNav((BigDecimal) stockEstimate.get("estimateNav"));
                     detail.setEstimateReturn((BigDecimal) stockEstimate.get("estimateReturn"));
+                    detail.setEstimateSource("基于重仓股实时行情加权估算");
                 }
             }
         } catch (Exception e) {
