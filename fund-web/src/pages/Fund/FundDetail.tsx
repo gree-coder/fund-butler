@@ -26,6 +26,7 @@ const FundDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [estimateSources, setEstimateSources] = useState<EstimateItem[]>([]);
   const [activeEstimate, setActiveEstimate] = useState<EstimateItem | null>(null);
+  const [actualSource, setActualSource] = useState<EstimateItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
 
@@ -54,11 +55,12 @@ const FundDetail: React.FC = () => {
       .then((res) => {
         const sources = res.sources || [];
         setEstimateSources(sources);
-        // 优先级: actual > smart > 第一个可用源
         const actual = sources.find((s) => s.key === 'actual' && s.available);
+        setActualSource(actual || null);
+        // activeEstimate: 跳过actual（单独展示），优先smart > 第一个非actual可用源
         const smart = sources.find((s) => s.key === 'smart' && s.available);
-        const first = sources.find((s) => s.available);
-        setActiveEstimate(actual || smart || first || null);
+        const firstNonActual = sources.find((s) => s.available && s.key !== 'actual');
+        setActiveEstimate(smart || firstNonActual || null);
       })
       .catch(() => {});
   }, [code]);
@@ -73,9 +75,10 @@ const FundDetail: React.FC = () => {
         const sources = result.estimates.sources;
         setEstimateSources(sources);
         const actual = sources.find((s) => s.key === 'actual' && s.available);
+        setActualSource(actual || null);
         const smart = sources.find((s) => s.key === 'smart' && s.available);
-        const first = sources.find((s) => s.available);
-        setActiveEstimate(actual || smart || first || null);
+        const firstNonActual = sources.find((s) => s.available && s.key !== 'actual');
+        setActiveEstimate(smart || firstNonActual || null);
       }
       message.success('数据已刷新');
     } catch {
@@ -136,48 +139,58 @@ const FundDetail: React.FC = () => {
               <div style={{ fontSize: 28, fontWeight: 700 }}>{formatNav(detail.latestNav)}</div>
               <div style={{ fontSize: 12, color: '#999' }}>
                 最新净值 ({detail.latestNavDate})
-                <span style={{ marginLeft: 8 }}>
-                  估值{' '}
-                  <span style={{ color: getProfitColor(activeEstimate?.estimateReturn ?? detail.estimateReturn) }}>
-                    {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)} ({formatPercent(activeEstimate?.estimateReturn ?? detail.estimateReturn)})
-                  </span>
-                  {estimateSources.length > 0 ? (
-                    <Dropdown
-                      menu={{
-                        items: estimateSources.map((s) => ({
-                          key: s.key,
-                          label: (
-                            <div>
-                              <div style={{ fontWeight: activeEstimate?.key === s.key ? 600 : 400 }}>
-                                {s.label} {!s.available && <Tag color="default" style={{ fontSize: 10 }}>不可用</Tag>}
-                              </div>
-                              {s.available && (
-                                <div style={{ fontSize: 11, color: '#666' }}>
-                                  {formatNav(s.estimateNav)} ({formatPercent(s.estimateReturn)})
+                <div style={{ marginTop: 4 }}>
+                  <div>
+                    <Tag color="blue" style={{ fontSize: 11 }}>估值</Tag>{' '}
+                    <span style={{ color: getProfitColor(activeEstimate?.estimateReturn ?? detail.estimateReturn) }}>
+                      {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)} ({formatPercent(activeEstimate?.estimateReturn ?? detail.estimateReturn)})
+                    </span>
+                    {estimateSources.length > 0 ? (
+                      <Dropdown
+                        menu={{
+                          items: estimateSources.filter((s) => s.key !== 'actual').map((s) => ({
+                            key: s.key,
+                            label: (
+                              <div>
+                                <div style={{ fontWeight: activeEstimate?.key === s.key ? 600 : 400 }}>
+                                  {s.label} {!s.available && <Tag color="default" style={{ fontSize: 10 }}>不可用</Tag>}
                                 </div>
-                              )}
-                              <div style={{ fontSize: 11, color: '#999' }}>{s.description}</div>
-                            </div>
-                          ),
-                          disabled: !s.available,
-                        })),
-                        onClick: ({ key }) => {
-                          const source = estimateSources.find((s) => s.key === key);
-                          if (source) setActiveEstimate(source);
-                        },
-                      }}
-                      trigger={['click']}
-                    >
-                      <span style={{ marginLeft: 4, color: '#1677ff', cursor: 'pointer', fontSize: 12 }}>
-                        {activeEstimate?.label ?? '切换数据源'} <DownOutlined style={{ fontSize: 10 }} />
+                                {s.available && (
+                                  <div style={{ fontSize: 11, color: '#666' }}>
+                                    {formatNav(s.estimateNav)} ({formatPercent(s.estimateReturn)})
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 11, color: '#999' }}>{s.description}</div>
+                              </div>
+                            ),
+                            disabled: !s.available,
+                          })),
+                          onClick: ({ key }) => {
+                            const source = estimateSources.find((s) => s.key === key);
+                            if (source) setActiveEstimate(source);
+                          },
+                        }}
+                        trigger={['click']}
+                      >
+                        <span style={{ marginLeft: 4, color: '#1677ff', cursor: 'pointer', fontSize: 12 }}>
+                          {activeEstimate?.label ?? '切换数据源'} <DownOutlined style={{ fontSize: 10 }} />
+                        </span>
+                      </Dropdown>
+                    ) : detail.estimateSource ? (
+                      <Tooltip title={`数据来源: ${detail.estimateSource}`}>
+                        <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', cursor: 'pointer' }} />
+                      </Tooltip>
+                    ) : null}
+                  </div>
+                  {actualSource && (
+                    <div style={{ marginTop: 4 }}>
+                      <Tag color="gold" style={{ fontSize: 11 }}>实际</Tag>{' '}
+                      <span style={{ color: getProfitColor(actualSource.estimateReturn), fontWeight: 600 }}>
+                        {formatNav(actualSource.estimateNav)} ({formatPercent(actualSource.estimateReturn)})
                       </span>
-                    </Dropdown>
-                  ) : detail.estimateSource ? (
-                    <Tooltip title={`数据来源: ${detail.estimateSource}`}>
-                      <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', cursor: 'pointer' }} />
-                    </Tooltip>
-                  ) : null}
-                </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </Col>

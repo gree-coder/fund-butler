@@ -36,11 +36,12 @@ public class DashboardService {
             if (p.getCostAmount() != null) {
                 totalCost = totalCost.add(p.getCostAmount());
             }
-            // 今日收益 = 份额 × 净值 × 估算日涨跌幅 / 100
-            if (p.getShares() != null && p.getLatestNav() != null && p.getEstimateReturn() != null) {
+            // 今日收益 = 份额 × 净值 × 日涨跌幅 / 100（优先使用实际涨幅）
+            BigDecimal dailyReturn = p.getActualReturn() != null ? p.getActualReturn() : p.getEstimateReturn();
+            if (p.getShares() != null && p.getLatestNav() != null && dailyReturn != null) {
                 BigDecimal dailyProfit = p.getShares()
                         .multiply(p.getLatestNav())
-                        .multiply(p.getEstimateReturn())
+                        .multiply(dailyReturn)
                         .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
                 todayProfit = todayProfit.add(dailyProfit);
             }

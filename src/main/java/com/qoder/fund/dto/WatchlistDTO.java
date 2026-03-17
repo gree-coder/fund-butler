@@ -14,5 +14,7 @@ public class WatchlistDTO {
     private String groupName;
     private BigDecimal latestNav;
     private BigDecimal estimateReturn;
+    private BigDecimal actualNav;
+    private BigDecimal actualReturn;
     private Map<String, BigDecimal> performance;
 }

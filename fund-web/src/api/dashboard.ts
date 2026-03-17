@@ -18,6 +18,8 @@ export interface PositionItem {
   latestNav: number;
   estimateNav: number;
   estimateReturn: number;
+  actualNav?: number;
+  actualReturn?: number;
   marketValue: number;
   profit: number;
   profitRate: number;

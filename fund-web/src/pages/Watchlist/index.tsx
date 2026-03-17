@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Tabs, List, Button, Popconfirm, Spin, Empty, message } from 'antd';
+import { Card, Tabs, List, Button, Popconfirm, Spin, Empty, message, Tag } from 'antd';
 import { StarOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { watchlistApi, type WatchlistItem } from '../../api/watchlist';
@@ -73,7 +73,14 @@ const Watchlist: React.FC = () => {
                 description={
                   <span style={{ fontSize: 12 }}>
                     净值 {formatNav(item.latestNav)}
-                    <span style={{ marginLeft: 12 }}>估值 <PriceChange value={item.estimateReturn} /></span>
+                    <span style={{ marginLeft: 12 }}>
+                      <Tag color="blue" style={{ fontSize: 11 }}>估值</Tag> <PriceChange value={item.estimateReturn} />
+                    </span>
+                    {item.actualReturn != null && (
+                      <span style={{ marginLeft: 8 }}>
+                        <Tag color="gold" style={{ fontSize: 11 }}>实际</Tag> <PriceChange value={item.actualReturn} />
+                      </span>
+                    )}
                   </span>
                 }
               />

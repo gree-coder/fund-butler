@@ -7,6 +7,8 @@ export interface WatchlistItem {
   groupName: string;
   latestNav: number;
   estimateReturn: number;
+  actualNav?: number;
+  actualReturn?: number;
   performance: { month1: number; month3: number; year1: number };
 }
 

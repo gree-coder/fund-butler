@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { List, Tag, Button, Spin, Empty } from 'antd';
 import { StarOutlined, PlusOutlined } from '@ant-design/icons';
-import { fundApi, type FundSearchItem } from '../../api/fund';
+import { fundApi } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
 import { formatFundType } from '../../utils/format';
 import { message } from 'antd';
@@ -11,39 +11,25 @@ import { useSearchStore } from '../../store/searchStore';
 const SearchResult: React.FC = () => {
   const [searchParams] = useSearchParams();
   const urlKeyword = searchParams.get('q') || '';
-  const [results, setResults] = useState<FundSearchItem[]>([]);
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const searchStore = useSearchStore();
+  const { keyword: storeKeyword, results, setSearch } = useSearchStore();
+  const [loading, setLoading] = useState(false);
 
-  // 优先使用 URL 参数，否则回退到 Zustand 缓存
-  const keyword = urlKeyword || searchStore.keyword;
+  const keyword = urlKeyword || storeKeyword;
 
   useEffect(() => {
-    if (!keyword) return;
-
-    // 如果是 URL 参数触发 或 store 已有缓存
-    if (searchStore.keyword === keyword && searchStore.results.length > 0) {
-      setResults(searchStore.results);
-      // 非 URL 参数（tab 切换回来）不需要重新请求
-      if (!urlKeyword) return;
-      // URL 参数和 store 关键词一致，也不需要重新请求
-      return;
-    }
-
-    // 没有 URL 参数且 store 无缓存，无法搜索
     if (!urlKeyword) return;
 
+    if (storeKeyword === urlKeyword && results.length > 0) return;
+
     setLoading(true);
-    fundApi.search(keyword)
+    fundApi.search(urlKeyword)
       .then((res) => {
-        const list = res.list || [];
-        setResults(list);
-        searchStore.setSearch(keyword, list);
+        setSearch(urlKeyword, res.list || []);
       })
-      .catch(() => setResults([]))
+      .catch(() => setSearch(urlKeyword, []))
       .finally(() => setLoading(false));
-  }, [keyword, urlKeyword]);
+  }, [urlKeyword]);
 
   const handleAddWatchlist = async (code: string, e: React.MouseEvent) => {
     e.stopPropagation();

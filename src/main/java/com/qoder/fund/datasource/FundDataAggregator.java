@@ -267,21 +267,13 @@ public class FundDataAggregator {
         }
         sources.add(stockItem);
 
-        // 数据源5: 智能综合预估 (基于准确度选源，若实际净值已发布则直接使用)
+        // 数据源5: 智能综合预估 (基于准确度选源，不受实际净值影响)
         EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
         smartItem.setKey("smart");
         smartItem.setLabel("智能综合预估");
 
-        if (actualItem != null && actualItem.isAvailable()) {
-            // 实际净值已发布，智能综合直接使用实际值
-            smartItem.setDescription("今日实际净值已发布");
-            smartItem.setEstimateNav(actualItem.getEstimateNav());
-            smartItem.setEstimateReturn(actualItem.getEstimateReturn());
-            smartItem.setAvailable(true);
-        } else {
-            // 基于准确度选择最佳数据源
-            buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem);
-        }
+        // 始终基于估值数据源的准确度进行选择，实际净值已单独展示
+        buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem);
         sources.add(smartItem);
 
         result.setSources(sources);
@@ -372,6 +364,40 @@ public class FundDataAggregator {
                             .last("LIMIT 1")
             );
             if (navs.isEmpty()) {
+                // Fallback: 尝试从API获取今日净值
+                try {
+                    String todayStr = today.toString();
+                    List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(fundCode, todayStr, todayStr);
+                    if (!navList.isEmpty()) {
+                        Map<String, Object> navData = navList.get(0);
+                        String navDate = (String) navData.get("navDate");
+                        if (todayStr.equals(navDate)) {
+                            BigDecimal nav = (BigDecimal) navData.get("nav");
+                            BigDecimal dailyReturn = (BigDecimal) navData.get("dailyReturn");
+                            // 存入DB供后续查询
+                            try {
+                                FundNav fundNav = new FundNav();
+                                fundNav.setFundCode(fundCode);
+                                fundNav.setNavDate(today);
+                                fundNav.setNav(nav);
+                                fundNav.setAccNav((BigDecimal) navData.get("accNav"));
+                                fundNav.setDailyReturn(dailyReturn);
+                                fundNavMapper.insert(fundNav);
+                            } catch (Exception ignored) {}
+                            // 构建actual数据源
+                            EstimateSourceDTO.EstimateItem item = new EstimateSourceDTO.EstimateItem();
+                            item.setKey("actual");
+                            item.setLabel("今日实际净值");
+                            item.setDescription("今日净值已发布 (来自基金公司官方数据)");
+                            item.setEstimateNav(nav);
+                            item.setEstimateReturn(dailyReturn != null ? dailyReturn : BigDecimal.ZERO);
+                            item.setAvailable(true);
+                            return item;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("从API获取今日实际净值失败: {}", fundCode, e);
+                }
                 return null;
             }
 
@@ -388,6 +414,13 @@ public class FundDataAggregator {
             log.warn("查询今日实际净值失败: {}", fundCode, e);
             return null;
         }
+    }
+
+    /**
+     * 获取今日实际净值数据源（供外部调用）
+     */
+    public EstimateSourceDTO.EstimateItem getActualSource(String fundCode) {
+        return buildActualSource(fundCode);
     }
 
     /**

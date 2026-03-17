@@ -2,6 +2,7 @@ package com.qoder.fund.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoder.fund.datasource.FundDataAggregator;
+import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.PositionDTO;
 import com.qoder.fund.dto.request.AddPositionRequest;
 import com.qoder.fund.dto.request.AddTransactionRequest;
@@ -154,6 +155,13 @@ public class PositionService {
         if (estimate != null && !estimate.isEmpty()) {
             dto.setEstimateNav((BigDecimal) estimate.get("estimateNav"));
             dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
+        }
+
+        // 今日实际净值（如果已发布）
+        EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(p.getFundCode());
+        if (actualSource != null && actualSource.isAvailable()) {
+            dto.setActualNav(actualSource.getEstimateNav());
+            dto.setActualReturn(actualSource.getEstimateReturn());
         }
 
         return dto;

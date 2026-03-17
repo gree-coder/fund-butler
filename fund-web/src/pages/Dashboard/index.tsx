@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Segmented, Spin } from 'antd';
+import { Card, Col, Row, Statistic, Segmented, Spin, Tag } from 'antd';
 import { EyeOutlined, EyeInvisibleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { dashboardApi, type DashboardData, type ProfitTrend } from '../../api/dashboard';
@@ -121,10 +121,19 @@ const Dashboard: React.FC = () => {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontWeight: 500 }}>{visible ? `¥${formatAmount(p.marketValue)}` : '****'}</div>
                   <div style={{ fontSize: 12 }}>
-                    <PriceChange value={p.estimateReturn} />
-                    <span style={{ color: getProfitColor(p.profitRate), marginLeft: 8 }}>
-                      {visible ? formatPercent(p.profitRate) : '****'}
-                    </span>
+                    <div>
+                      <Tag color="blue" style={{ fontSize: 11, marginRight: 4 }}>估值</Tag>
+                      <PriceChange value={p.estimateReturn} />
+                      <span style={{ color: getProfitColor(p.profitRate), marginLeft: 8 }}>
+                        {visible ? formatPercent(p.profitRate) : '****'}
+                      </span>
+                    </div>
+                    {p.actualReturn != null && (
+                      <div style={{ marginTop: 2 }}>
+                        <Tag color="gold" style={{ fontSize: 11, marginRight: 4 }}>实际</Tag>
+                        <PriceChange value={p.actualReturn} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

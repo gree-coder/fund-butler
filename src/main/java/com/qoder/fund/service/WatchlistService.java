@@ -2,6 +2,7 @@ package com.qoder.fund.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoder.fund.datasource.FundDataAggregator;
+import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.WatchlistDTO;
 import com.qoder.fund.entity.Fund;
 import com.qoder.fund.entity.Watchlist;
@@ -54,6 +55,13 @@ public class WatchlistService {
             Map<String, Object> estimate = dataAggregator.getEstimateNav(w.getFundCode());
             if (estimate != null && !estimate.isEmpty()) {
                 dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
+            }
+
+            // 今日实际净值（如果已发布）
+            EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(w.getFundCode());
+            if (actualSource != null && actualSource.isAvailable()) {
+                dto.setActualNav(actualSource.getEstimateNav());
+                dto.setActualReturn(actualSource.getEstimateReturn());
             }
 
             BigDecimal latestNav = dataAggregator.getLatestNav(w.getFundCode());

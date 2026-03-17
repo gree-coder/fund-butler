@@ -15,6 +15,8 @@ public class PositionDTO {
     private BigDecimal latestNav;
     private BigDecimal estimateNav;
     private BigDecimal estimateReturn;
+    private BigDecimal actualNav;
+    private BigDecimal actualReturn;
     private BigDecimal marketValue;
     private BigDecimal profit;
     private BigDecimal profitRate;
