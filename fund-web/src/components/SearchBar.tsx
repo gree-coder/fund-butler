@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { AutoComplete, Input, Spin, Typography } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { fundApi, type FundSearchItem } from '../api/fund';
 import { formatFundType } from '../utils/format';
 
@@ -11,8 +11,17 @@ const SearchBar: React.FC = () => {
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<FundSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Sync keyword from URL when navigating to /search?q=xxx
+  useEffect(() => {
+    if (location.pathname === '/search') {
+      const q = new URLSearchParams(location.search).get('q') || '';
+      if (q) setKeyword(q);
+    }
+  }, [location.pathname, location.search]);
 
   const doSearch = useCallback(async (value: string) => {
     if (value.length < 2) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Layout, Menu } from 'antd';
 import {
   DashboardOutlined,
@@ -21,6 +21,23 @@ const menuItems = [
 const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const lastSearchPath = useRef<string>('/search');
+
+  // Track the last path under the "基金查询" section
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.startsWith('/search') || path.startsWith('/fund/')) {
+      lastSearchPath.current = path + location.search;
+    }
+  }, [location.pathname, location.search]);
+
+  const handleMenuClick = ({ key }: { key: string }) => {
+    if (key === '/search') {
+      navigate(lastSearchPath.current);
+    } else {
+      navigate(key);
+    }
+  };
 
   const selectedKey = location.pathname.startsWith('/fund/')
     ? '/search'
@@ -65,7 +82,7 @@ const AppLayout: React.FC = () => {
             selectedKeys={[selectedKey]}
             items={menuItems}
             style={{ height: '100%', borderRight: 0 }}
-            onClick={({ key }) => navigate(key)}
+            onClick={handleMenuClick}
           />
         </Sider>
         <Content
