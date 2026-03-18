@@ -15,6 +15,29 @@ const theme = {
   token: {
     colorPrimary: '#1677FF',
     borderRadius: 8,
+    colorBgContainer: '#FFFFFF',
+    colorBgLayout: '#F5F7FA',
+    fontSize: 14,
+  },
+  components: {
+    Card: {
+      paddingLG: 24,
+      borderRadiusLG: 12,
+    },
+    Menu: {
+      itemBorderRadius: 8,
+      itemMarginInline: 8,
+      itemSelectedBg: '#E6F4FF',
+      itemSelectedColor: '#1677FF',
+      itemHoverBg: '#FAFBFC',
+    },
+    Table: {
+      headerBg: '#FAFBFC',
+      borderColor: '#f0f0f0',
+    },
+    Tabs: {
+      inkBarColor: '#1677FF',
+    },
   },
 };
 

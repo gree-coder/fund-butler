@@ -23,7 +23,6 @@ const AppLayout: React.FC = () => {
   const location = useLocation();
   const lastSearchPath = useRef<string>('/search');
 
-  // Track the last path under the "基金查询" section
   useEffect(() => {
     const path = location.pathname;
     if (path.startsWith('/search') || path.startsWith('/fund/')) {
@@ -50,24 +49,43 @@ const AppLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header
+        className="fund-header"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           background: '#fff',
-          borderBottom: '1px solid #f0f0f0',
           padding: '0 24px',
+          height: 64,
+          lineHeight: '64px',
         }}
       >
         <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
             fontSize: 18,
             fontWeight: 700,
             color: '#1677FF',
             cursor: 'pointer',
+            letterSpacing: 1,
           }}
           onClick={() => navigate('/')}
         >
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: 'linear-gradient(135deg, #1677FF, #4096ff)',
+            color: '#fff',
+            fontSize: 16,
+          }}>
+            <FundOutlined />
+          </span>
           基金管家
         </div>
         <SearchBar />
@@ -75,13 +93,14 @@ const AppLayout: React.FC = () => {
       <Layout>
         <Sider
           width={200}
-          style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}
+          className="fund-sider"
+          style={{ background: '#fff' }}
         >
           <Menu
             mode="inline"
             selectedKeys={[selectedKey]}
             items={menuItems}
-            style={{ height: '100%', borderRight: 0 }}
+            style={{ height: '100%', borderRight: 0, paddingTop: 8 }}
             onClick={handleMenuClick}
           />
         </Sider>
@@ -92,17 +111,11 @@ const AppLayout: React.FC = () => {
             minHeight: 'calc(100vh - 64px)',
           }}
         >
-          <Outlet />
-          <div
-            style={{
-              textAlign: 'center',
-              color: '#999',
-              fontSize: 12,
-              marginTop: 40,
-              paddingBottom: 20,
-            }}
-          >
-            数据仅供参考，不构成投资建议
+          <div className="fund-content">
+            <Outlet />
+            <div className="fund-footer">
+              数据仅供参考，不构成投资建议
+            </div>
           </div>
         </Content>
       </Layout>

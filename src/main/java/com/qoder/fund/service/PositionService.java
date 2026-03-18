@@ -49,11 +49,38 @@ public class PositionService {
         // 确保基金信息存在
         dataAggregator.getFundDetail(req.getFundCode());
 
+        BigDecimal amount = req.getAmount();
+        BigDecimal shares = req.getShares();
+        BigDecimal price = req.getPrice();
+
+        // 自动计算 shares 和 price（如果未提供）
+        if (shares == null && price == null) {
+            // 两者都未提供，使用最新净值计算
+            BigDecimal latestNav = dataAggregator.getLatestNav(req.getFundCode());
+            if (latestNav == null || latestNav.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("无法获取最新净值，请手动填写份额或成本净值");
+            }
+            price = latestNav;
+            shares = amount.divide(latestNav, 4, RoundingMode.HALF_UP);
+        } else if (shares == null) {
+            // 有 price 无 shares
+            if (price.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("成交净值不能为零");
+            }
+            shares = amount.divide(price, 4, RoundingMode.HALF_UP);
+        } else if (price == null) {
+            // 有 shares 无 price
+            if (shares.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("持有份额不能为零");
+            }
+            price = amount.divide(shares, 4, RoundingMode.HALF_UP);
+        }
+
         Position position = new Position();
         position.setFundCode(req.getFundCode());
         position.setAccountId(req.getAccountId());
-        position.setShares(req.getShares());
-        position.setCostAmount(req.getAmount());
+        position.setShares(shares);
+        position.setCostAmount(amount);
         positionMapper.insert(position);
 
         // 创建买入交易记录
@@ -61,9 +88,9 @@ public class PositionService {
         txn.setPositionId(position.getId());
         txn.setFundCode(req.getFundCode());
         txn.setType("BUY");
-        txn.setAmount(req.getAmount());
-        txn.setShares(req.getShares());
-        txn.setPrice(req.getPrice());
+        txn.setAmount(amount);
+        txn.setShares(shares);
+        txn.setPrice(price);
         txn.setFee(BigDecimal.ZERO);
         txn.setTradeDate(req.getTradeDate());
         transactionMapper.insert(txn);

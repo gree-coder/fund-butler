@@ -17,4 +17,18 @@ public class WatchlistDTO {
     private BigDecimal actualNav;
     private BigDecimal actualReturn;
     private Map<String, BigDecimal> performance;
+    /** 智能预估涨跌幅 */
+    private BigDecimal smartEstimateReturn;
+    /** 智能预估净值 */
+    private BigDecimal smartEstimateNav;
+    /** 策略类型: 统一为 "adaptive" */
+    private String smartStrategyType;
+    /** 策略描述文案 */
+    private String smartDescription;
+    /** 场景名 */
+    private String smartScenario;
+    /** 各源归一化权重 */
+    private Map<String, BigDecimal> smartWeights;
+    /** 是否应用了准确度修正 */
+    private Boolean smartAccuracyEnhanced;
 }

@@ -10,6 +10,13 @@ export interface WatchlistItem {
   actualNav?: number;
   actualReturn?: number;
   performance: { month1: number; month3: number; year1: number };
+  smartEstimateReturn?: number | null;
+  smartEstimateNav?: number | null;
+  smartStrategyType?: string | null;
+  smartDescription?: string | null;
+  smartScenario?: string | null;
+  smartWeights?: Record<string, number> | null;
+  smartAccuracyEnhanced?: boolean;
 }
 
 export interface WatchlistData {
@@ -26,4 +33,7 @@ export const watchlistApi = {
 
   remove: (id: number): Promise<void> =>
     client.delete(`/watchlist/${id}`),
+
+  checkExists: (codes: string[]): Promise<string[]> =>
+    client.get('/watchlist/check', { params: { codes: codes.join(',') } }),
 };

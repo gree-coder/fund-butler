@@ -7,12 +7,12 @@ const EmptyGuide: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <Empty
-      image={Empty.PRESENTED_IMAGE_SIMPLE}
-      description="还没有持仓基金"
-      style={{ padding: '60px 0' }}
-    >
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+    <div className="fund-empty-guide">
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description={<span style={{ fontSize: 15, color: '#8C8C8C' }}>还没有持仓基金</span>}
+      />
+      <div className="fund-empty-actions">
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -27,7 +27,7 @@ const EmptyGuide: React.FC = () => {
           搜索基金
         </Button>
       </div>
-    </Empty>
+    </div>
   );
 };
 

@@ -51,17 +51,27 @@ public class WatchlistService {
                 }
             }
 
-            // 估值
-            Map<String, Object> estimate = dataAggregator.getEstimateNav(w.getFundCode());
-            if (estimate != null && !estimate.isEmpty()) {
-                dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
-            }
-
-            // 今日实际净值（如果已发布）
-            EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(w.getFundCode());
-            if (actualSource != null && actualSource.isAvailable()) {
-                dto.setActualNav(actualSource.getEstimateNav());
-                dto.setActualReturn(actualSource.getEstimateReturn());
+            // 多源估值（含智能预估）
+            EstimateSourceDTO estimates = dataAggregator.getMultiSourceEstimates(w.getFundCode());
+            if (estimates != null && estimates.getSources() != null) {
+                for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                    if ("eastmoney".equals(source.getKey()) && source.isAvailable()) {
+                        dto.setEstimateReturn(source.getEstimateReturn());
+                    }
+                    if ("actual".equals(source.getKey()) && source.isAvailable()) {
+                        dto.setActualNav(source.getEstimateNav());
+                        dto.setActualReturn(source.getEstimateReturn());
+                    }
+                    if ("smart".equals(source.getKey()) && source.isAvailable()) {
+                        dto.setSmartEstimateReturn(source.getEstimateReturn());
+                        dto.setSmartEstimateNav(source.getEstimateNav());
+                        dto.setSmartStrategyType(source.getStrategyType());
+                        dto.setSmartDescription(source.getDescription());
+                        dto.setSmartScenario(source.getScenario());
+                        dto.setSmartWeights(source.getWeights());
+                        dto.setSmartAccuracyEnhanced(source.isAccuracyEnhanced());
+                    }
+                }
             }
 
             BigDecimal latestNav = dataAggregator.getLatestNav(w.getFundCode());
@@ -109,5 +119,16 @@ public class WatchlistService {
 
     public void remove(Long id) {
         watchlistMapper.deleteById(id);
+    }
+
+    public Set<String> checkExists(List<String> fundCodes) {
+        if (fundCodes == null || fundCodes.isEmpty()) {
+            return Set.of();
+        }
+        List<Watchlist> list = watchlistMapper.selectList(
+                new QueryWrapper<Watchlist>().in("fund_code", fundCodes));
+        return list.stream()
+                .map(Watchlist::getFundCode)
+                .collect(Collectors.toSet());
     }
 }

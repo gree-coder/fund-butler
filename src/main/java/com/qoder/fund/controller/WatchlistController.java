@@ -7,7 +7,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/watchlist")
@@ -31,5 +33,10 @@ public class WatchlistController {
     public Result<Void> remove(@PathVariable Long id) {
         watchlistService.remove(id);
         return Result.success();
+    }
+
+    @GetMapping("/check")
+    public Result<Set<String>> check(@RequestParam List<String> codes) {
+        return Result.success(watchlistService.checkExists(codes));
     }
 }

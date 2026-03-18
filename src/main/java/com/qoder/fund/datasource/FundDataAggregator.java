@@ -454,9 +454,8 @@ public class FundDataAggregator {
     }
 
     /**
-     * 基于准确度选择最佳数据源构建智能预估
-     * 查询最近3个交易日的预测记录，计算各源MAE，选MAE最小的源
-     * 若历史数据不足3条，回退到自适应权重加权平均
+     * 构建智能综合预估
+     * 始终使用多源加权平均，基金类型决定基础权重，历史准确度数据(MAE)动态修正权重
      */
     private void buildSmartEstimate(String fundCode,
                                     EstimateSourceDTO.EstimateItem eastMoneyItem,
@@ -479,30 +478,39 @@ public class FundDataAggregator {
             return;
         }
 
-        // 尝试基于准确度选源
+        // Step 1: 基于基金类型确定基础权重
+        AdaptiveWeightResult weightResult = determineAdaptiveWeights(fundCode, fundType, stockSourceType, coverageRatio);
+        Map<String, BigDecimal> baseWeights = weightResult.weights;
+
+        // Step 2: 尝试用历史准确度数据修正基础权重
+        Map<String, BigDecimal> finalWeights;
+        boolean accuracyEnhanced = false;
         try {
-            String bestSource = findBestSourceByAccuracy(fundCode, availableSources.keySet());
-            if (bestSource != null && availableSources.containsKey(bestSource)) {
-                EstimateSourceDTO.EstimateItem best = availableSources.get(bestSource);
-                smartItem.setEstimateNav(best.getEstimateNav());
-                smartItem.setEstimateReturn(best.getEstimateReturn());
-                smartItem.setAvailable(true);
-                smartItem.setDescription("基于近3日准确度选择: " + best.getLabel());
-                return;
+            Map<String, BigDecimal> multipliers = calculateAccuracyMultipliers(fundCode, availableSources.keySet());
+            if (multipliers != null && multipliers.size() >= 2) {
+                finalWeights = new LinkedHashMap<>();
+                for (String key : availableSources.keySet()) {
+                    BigDecimal bw = baseWeights.getOrDefault(key, new BigDecimal("0.25"));
+                    BigDecimal multiplier = multipliers.getOrDefault(key, BigDecimal.ONE);
+                    finalWeights.put(key, bw.multiply(multiplier));
+                }
+                accuracyEnhanced = true;
+                log.info("基金{}应用准确度修正, 修正因子: {}", fundCode, multipliers);
+            } else {
+                finalWeights = baseWeights;
             }
         } catch (Exception e) {
-            log.warn("准确度选源失败，回退到加权平均: {}", fundCode, e);
+            log.warn("准确度修正计算失败，使用基础权重: {}", fundCode, e);
+            finalWeights = baseWeights;
         }
 
-        // 回退: 自适应权重加权平均
-        Map<String, BigDecimal> weights = determineAdaptiveWeights(fundCode, fundType, stockSourceType, coverageRatio);
-
+        // Step 3: 加权计算
         BigDecimal totalWeight = BigDecimal.ZERO;
         BigDecimal weightedNav = BigDecimal.ZERO;
         BigDecimal weightedReturn = BigDecimal.ZERO;
 
         for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
-            BigDecimal w = weights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            BigDecimal w = finalWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
             totalWeight = totalWeight.add(w);
             weightedNav = weightedNav.add(entry.getValue().getEstimateNav().multiply(w));
             weightedReturn = weightedReturn.add(entry.getValue().getEstimateReturn().multiply(w));
@@ -512,13 +520,24 @@ public class FundDataAggregator {
         smartItem.setEstimateReturn(weightedReturn.divide(totalWeight, 2, RoundingMode.HALF_UP));
         smartItem.setAvailable(true);
         smartItem.setDescription(buildAdaptiveDescription(fundType, stockSourceType, coverageRatio));
+        smartItem.setStrategyType("adaptive");
+        smartItem.setScenario(weightResult.scenario);
+        smartItem.setAccuracyEnhanced(accuracyEnhanced);
+
+        // 计算归一化权重（仅包含实际参与计算的源）
+        Map<String, BigDecimal> normalizedWeights = new LinkedHashMap<>();
+        for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
+            BigDecimal w = finalWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            normalizedWeights.put(entry.getKey(), w.divide(totalWeight, 4, RoundingMode.HALF_UP));
+        }
+        smartItem.setWeights(normalizedWeights);
     }
 
     /**
      * 根据基金类型、stock源类型、覆盖率确定自适应权重
      */
-    private Map<String, BigDecimal> determineAdaptiveWeights(String fundCode, String fundType,
-                                                              String stockSourceType, BigDecimal coverageRatio) {
+    private AdaptiveWeightResult determineAdaptiveWeights(String fundCode, String fundType,
+                                                           String stockSourceType, BigDecimal coverageRatio) {
         Map<String, BigDecimal> weights = new LinkedHashMap<>();
         String scenario;
 
@@ -577,7 +596,7 @@ public class FundDataAggregator {
                 fundCode, fundType, stockSourceType,
                 coverageRatio != null ? coverageRatio.setScale(1, RoundingMode.HALF_UP) : "N/A",
                 scenario);
-        return weights;
+        return new AdaptiveWeightResult(weights, scenario);
     }
 
     /**
@@ -604,11 +623,25 @@ public class FundDataAggregator {
         }
     }
 
+    /** 自适应权重计算结果 */
+    private static class AdaptiveWeightResult {
+        final Map<String, BigDecimal> weights;
+        final String scenario;
+
+        AdaptiveWeightResult(Map<String, BigDecimal> weights, String scenario) {
+            this.weights = weights;
+            this.scenario = scenario;
+        }
+    }
+
     /**
-     * 查询 estimate_prediction 表中有完整评估数据的最近3条记录，计算各源MAE，返回最佳源key
-     * 自动跳过没有快照的日期（无记录即跳过），取往前推能获取到数据的3天
+     * 基于历史预测准确度计算各数据源的权重修正乘数
+     * 查询 estimate_prediction 表最近3条有实际值的记录，计算各源MAE
+     * MAE越低的源乘数越高，MAE越高的源乘数越低
+     * 公式: multiplier = 1 / (1 + MAE)，无数据的源乘数为1（不修正）
+     * 返回null表示数据不足，不应用修正
      */
-    private String findBestSourceByAccuracy(String fundCode, Set<String> sourceKeys) {
+    private Map<String, BigDecimal> calculateAccuracyMultipliers(String fundCode, Set<String> sourceKeys) {
         List<EstimatePrediction> predictions = estimatePredictionMapper.selectList(
                 new QueryWrapper<EstimatePrediction>()
                         .eq("fund_code", fundCode)
@@ -621,14 +654,14 @@ public class FundDataAggregator {
             return null;
         }
 
-        // 按 source_key 分组计算 MAE
+        // 按 source_key 分组
         Map<String, List<EstimatePrediction>> bySource = new LinkedHashMap<>();
         for (EstimatePrediction p : predictions) {
             bySource.computeIfAbsent(p.getSourceKey(), k -> new ArrayList<>()).add(p);
         }
 
-        String bestSource = null;
-        BigDecimal bestMae = null;
+        // 计算各源MAE（至少3条记录才参与）
+        Map<String, BigDecimal> maeMap = new LinkedHashMap<>();
         int minRecords = 3;
 
         for (Map.Entry<String, List<EstimatePrediction>> entry : bySource.entrySet()) {
@@ -644,16 +677,24 @@ public class FundDataAggregator {
                 sumError = sumError.add(error);
             }
             BigDecimal mae = sumError.divide(new BigDecimal(recent.size()), 4, RoundingMode.HALF_UP);
-
-            if (bestMae == null || mae.compareTo(bestMae) < 0) {
-                bestMae = mae;
-                bestSource = entry.getKey();
-            }
+            maeMap.put(entry.getKey(), mae);
         }
 
-        if (bestSource != null) {
-            log.info("基金{}准确度选源: {} (MAE={})", fundCode, bestSource, bestMae);
+        if (maeMap.size() < 2) {
+            return null;
         }
-        return bestSource;
+
+        // 转换为修正乘数: multiplier = 1 / (1 + MAE)
+        // MAE=0 → multiplier=1.0(最高), MAE=1 → multiplier=0.5, MAE=2 → multiplier=0.33
+        Map<String, BigDecimal> multipliers = new LinkedHashMap<>();
+        for (Map.Entry<String, BigDecimal> entry : maeMap.entrySet()) {
+            BigDecimal multiplier = BigDecimal.ONE.divide(
+                    BigDecimal.ONE.add(entry.getValue()), 4, RoundingMode.HALF_UP);
+            multipliers.put(entry.getKey(), multiplier);
+        }
+        // 无历史数据的源乘数为1（不修正）
+
+        log.info("基金{}准确度修正乘数: {}", fundCode, multipliers);
+        return multipliers;
     }
 }
