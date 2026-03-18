@@ -5,8 +5,8 @@ export interface AddPositionParams {
   fundCode: string;
   accountId: number;
   amount: number;
-  shares: number;
-  price: number;
+  shares?: number;
+  price?: number;
   tradeDate: string;
 }
 

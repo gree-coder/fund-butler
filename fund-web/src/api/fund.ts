@@ -47,6 +47,10 @@ export interface EstimateItem {
   estimateReturn: number;
   available: boolean;
   description: string;
+  strategyType?: string | null;
+  scenario?: string | null;
+  weights?: Record<string, number> | null;
+  accuracyEnhanced?: boolean;
 }
 
 export interface EstimateSourceData {

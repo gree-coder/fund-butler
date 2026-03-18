@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Segmented, Spin, Tag } from 'antd';
-import { EyeOutlined, EyeInvisibleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Segmented, Tag } from 'antd';
+import { EyeOutlined, EyeInvisibleOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { dashboardApi, type DashboardData, type ProfitTrend } from '../../api/dashboard';
 import { useAmountVisible } from '../../hooks/useAmountVisible';
-import { formatAmount, formatPercent, getProfitColor } from '../../utils/format';
+import { formatAmount, formatPercent, getProfitColor, getFundTypeColor } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
 import EmptyGuide from '../../components/EmptyGuide';
+import PageSkeleton from '../../components/PageSkeleton';
 import ReactECharts from 'echarts-for-react';
 
 const Dashboard: React.FC = () => {
@@ -31,18 +32,19 @@ const Dashboard: React.FC = () => {
       .catch(() => {});
   }, [trendDays]);
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading) return <PageSkeleton type="dashboard" />;
 
   if (!data || data.positions.length === 0) return <EmptyGuide />;
 
   const trendOption = trend ? {
     tooltip: { trigger: 'axis' as const },
-    xAxis: { type: 'category' as const, data: trend.dates, axisLabel: { fontSize: 11 } },
+    xAxis: { type: 'category' as const, data: trend.dates },
     yAxis: { type: 'value' as const, axisLabel: { formatter: (v: number) => `${v.toFixed(0)}` } },
     series: [{
       type: 'bar',
       data: trend.profits,
       itemStyle: {
+        borderRadius: [4, 4, 0, 0],
         color: (params: { value: number }) => params.value >= 0 ? '#F5222D' : '#52C41A',
       },
     }],
@@ -50,40 +52,40 @@ const Dashboard: React.FC = () => {
   } : {};
 
   return (
-    <div>
+    <div className="fund-fade-in">
       {/* Asset Overview */}
-      <Card style={{ marginBottom: 16 }}>
+      <Card className="fund-card-static" style={{ marginBottom: 16 }}>
         <Row gutter={24} align="middle">
-          <Col span={8}>
+          <Col span={8} className="fund-stat-divider">
             <Statistic
               title={
-                <span>
+                <span className="fund-stat-label">
                   总资产{' '}
-                  <span onClick={toggle} style={{ cursor: 'pointer', color: '#999' }}>
+                  <span onClick={toggle} style={{ cursor: 'pointer', color: '#bfbfbf', marginLeft: 4 }}>
                     {visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
                   </span>
                 </span>
               }
               value={mask(formatAmount(data.totalAsset))}
               prefix={visible ? '¥' : ''}
-              valueStyle={{ fontSize: 28, fontWeight: 700 }}
+              valueStyle={{ fontSize: 32, fontWeight: 700, color: '#1677FF', fontVariantNumeric: 'tabular-nums' }}
             />
           </Col>
-          <Col span={8}>
+          <Col span={8} className="fund-stat-divider">
             <Statistic
-              title="总收益"
+              title={<span className="fund-stat-label">总收益</span>}
               value={mask(formatAmount(data.totalProfit))}
               prefix={visible ? '¥' : ''}
-              valueStyle={{ color: getProfitColor(data.totalProfit) }}
+              valueStyle={{ color: getProfitColor(data.totalProfit), fontVariantNumeric: 'tabular-nums' }}
               suffix={visible ? <span style={{ fontSize: 14 }}>{formatPercent(data.totalProfitRate)}</span> : null}
             />
           </Col>
           <Col span={8}>
             <Statistic
-              title="今日收益"
+              title={<span className="fund-stat-label">今日收益</span>}
               value={mask(formatAmount(data.todayProfit))}
               prefix={visible ? '¥' : ''}
-              valueStyle={{ color: getProfitColor(data.todayProfit) }}
+              valueStyle={{ color: getProfitColor(data.todayProfit), fontVariantNumeric: 'tabular-nums' }}
             />
           </Col>
         </Row>
@@ -93,58 +95,66 @@ const Dashboard: React.FC = () => {
         {/* Position List */}
         <Col span={14}>
           <Card
-            title="持仓基金"
+            className="fund-card-static"
+            title={<span style={{ fontWeight: 600 }}>持仓基金 <span style={{ fontSize: 13, color: '#8C8C8C', fontWeight: 400, marginLeft: 4 }}>{data.positions.length}只</span></span>}
             extra={
-              <PlusOutlined
-                style={{ cursor: 'pointer', color: '#1677FF' }}
+              <span
+                style={{ cursor: 'pointer', color: '#1677FF', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}
                 onClick={() => navigate('/portfolio/add')}
-              />
+              >
+                <PlusOutlined /> 添加
+              </span>
             }
           >
             {data.positions.map((p) => (
               <div
                 key={p.id}
+                className="fund-list-item"
                 onClick={() => navigate(`/fund/${p.fundCode}`)}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 0',
-                  borderBottom: '1px solid #f0f0f0',
-                  cursor: 'pointer',
-                }}
               >
-                <div>
-                  <div style={{ fontWeight: 500 }}>{p.fundName}</div>
-                  <div style={{ fontSize: 12, color: '#999' }}>{p.fundCode} | {p.accountName}</div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div className="fund-type-bar" style={{ background: getFundTypeColor(p.fundType) }} />
+                  <div>
+                    <div className="fund-name">{p.fundName}</div>
+                    <div className="fund-secondary" style={{ marginTop: 2 }}>{p.fundCode} · {p.accountName}</div>
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 500 }}>{visible ? `¥${formatAmount(p.marketValue)}` : '****'}</div>
-                  <div style={{ fontSize: 12 }}>
-                    <div>
-                      <Tag color="blue" style={{ fontSize: 11, marginRight: 4 }}>估值</Tag>
-                      <PriceChange value={p.estimateReturn} />
-                      <span style={{ color: getProfitColor(p.profitRate), marginLeft: 8 }}>
-                        {visible ? formatPercent(p.profitRate) : '****'}
-                      </span>
-                    </div>
-                    {p.actualReturn != null && (
-                      <div style={{ marginTop: 2 }}>
-                        <Tag color="gold" style={{ fontSize: 11, marginRight: 4 }}>实际</Tag>
-                        <PriceChange value={p.actualReturn} />
-                      </div>
-                    )}
+                  <div style={{ fontWeight: 600, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
+                    {visible ? `¥${formatAmount(p.marketValue)}` : '****'}
                   </div>
+                  <div style={{ fontSize: 12, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                    <span>
+                      <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>估</Tag>
+                      <PriceChange value={p.estimateReturn} size="sm" />
+                    </span>
+                    <span style={{ color: getProfitColor(p.profitRate) }}>
+                      {visible ? formatPercent(p.profitRate) : '****'}
+                    </span>
+                  </div>
+                  {p.actualReturn != null && (
+                    <div style={{ fontSize: 12, marginTop: 1 }}>
+                      <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>实</Tag>
+                      <PriceChange value={p.actualReturn} size="sm" />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+            <div
+              style={{ textAlign: 'center', padding: '8px 0', cursor: 'pointer', color: '#8C8C8C', fontSize: 13 }}
+              onClick={() => navigate('/portfolio')}
+            >
+              查看全部持仓 <RightOutlined style={{ fontSize: 10 }} />
+            </div>
           </Card>
         </Col>
 
         {/* Profit Trend */}
         <Col span={10}>
           <Card
-            title="收益趋势"
+            className="fund-card-static"
+            title={<span style={{ fontWeight: 600 }}>收益趋势</span>}
             extra={
               <Segmented
                 size="small"
@@ -157,7 +167,11 @@ const Dashboard: React.FC = () => {
               />
             }
           >
-            {trend ? <ReactECharts option={trendOption} style={{ height: 250 }} /> : <Spin />}
+            {trend ? (
+              <ReactECharts option={trendOption} theme="fundTheme" style={{ height: 250 }} />
+            ) : (
+              <PageSkeleton type="list" />
+            )}
           </Card>
         </Col>
       </Row>

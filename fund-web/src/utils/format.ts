@@ -31,6 +31,29 @@ export const FUND_TYPE_MAP: Record<string, string> = {
   INDEX: '指数型',
 };
 
+export const FUND_TYPE_COLOR: Record<string, string> = {
+  STOCK: '#1677FF',
+  MIXED: '#722ED1',
+  BOND: '#13C2C2',
+  MONEY: '#52C41A',
+  QDII: '#F5222D',
+  INDEX: '#FA8C16',
+};
+
+export const FUND_TYPE_TAG_COLOR: Record<string, string> = {
+  STOCK: 'blue',
+  MIXED: 'purple',
+  BOND: 'cyan',
+  MONEY: 'green',
+  QDII: 'red',
+  INDEX: 'orange',
+};
+
+export function getFundTypeColor(type: string | null | undefined): string {
+  if (!type) return '#8C8C8C';
+  return FUND_TYPE_COLOR[type] || '#8C8C8C';
+}
+
 export function formatFundType(type: string | null | undefined): string {
   if (!type) return '--';
   return FUND_TYPE_MAP[type] || type;

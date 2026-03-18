@@ -15,7 +15,6 @@ const SearchBar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Sync keyword from URL when navigating to /search?q=xxx
   useEffect(() => {
     if (location.pathname === '/search') {
       const q = new URLSearchParams(location.search).get('q') || '';
@@ -65,9 +64,9 @@ const SearchBar: React.FC = () => {
   const options = results.slice(0, 10).map((item) => ({
     value: item.code,
     label: (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text strong>{item.code}</Text>
-        <Text>{item.name}</Text>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 0' }}>
+        <Text className="fund-code" style={{ fontSize: 13 }}>{item.code}</Text>
+        <Text style={{ flex: 1 }}>{item.name}</Text>
         <Text type="secondary" style={{ fontSize: 12 }}>
           {formatFundType(item.type)}
         </Text>
@@ -77,14 +76,15 @@ const SearchBar: React.FC = () => {
 
   return (
     <AutoComplete
-      style={{ width: 320 }}
+      className="fund-searchbar"
+      style={{ width: 360 }}
       options={options}
       onSearch={handleSearch}
       onSelect={handleSelect}
       value={keyword}
     >
       <Input
-        prefix={<SearchOutlined />}
+        prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
         placeholder="搜索基金名称或代码"
         onPressEnter={handlePressEnter}
         allowClear

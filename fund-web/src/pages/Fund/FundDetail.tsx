@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Spin, Button, Space, Tooltip, Dropdown, message } from 'antd';
-import { StarOutlined, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Button, Space, Tooltip, Dropdown, message } from 'antd';
+import { StarOutlined, StarFilled, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { fundApi, type FundDetail as FundDetailType, type EstimateItem } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
-import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType } from '../../utils/format';
+import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType, FUND_TYPE_TAG_COLOR } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
+import PageSkeleton from '../../components/PageSkeleton';
 
 const PERIODS = [
   { label: '近1月', value: '1m' },
@@ -28,6 +29,7 @@ const FundDetail: React.FC = () => {
   const [activeEstimate, setActiveEstimate] = useState<EstimateItem | null>(null);
   const [actualSource, setActualSource] = useState<EstimateItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [inWatchlist, setInWatchlist] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,6 +39,9 @@ const FundDetail: React.FC = () => {
       .then(setDetail)
       .catch(() => {})
       .finally(() => setLoading(false));
+    watchlistApi.checkExists([code])
+      .then((existCodes) => setInWatchlist(existCodes.includes(code)))
+      .catch(() => {});
   }, [code]);
 
   useEffect(() => {
@@ -57,7 +62,6 @@ const FundDetail: React.FC = () => {
         setEstimateSources(sources);
         const actual = sources.find((s) => s.key === 'actual' && s.available);
         setActualSource(actual || null);
-        // activeEstimate: 跳过actual（单独展示），优先smart > 第一个非actual可用源
         const smart = sources.find((s) => s.key === 'smart' && s.available);
         const firstNonActual = sources.find((s) => s.available && s.key !== 'actual');
         setActiveEstimate(smart || firstNonActual || null);
@@ -88,31 +92,56 @@ const FundDetail: React.FC = () => {
     }
   };
 
-  if (loading || !detail) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading || !detail) return <PageSkeleton type="detail" />;
 
   const chartOption = {
     tooltip: { trigger: 'axis' as const },
-    xAxis: { type: 'category' as const, data: navDates, axisLabel: { fontSize: 10 } },
+    xAxis: { type: 'category' as const, data: navDates },
     yAxis: { type: 'value' as const, scale: true, axisLabel: { formatter: (v: number) => v.toFixed(4) } },
-    series: [{ type: 'line', data: navValues, smooth: true, lineStyle: { color: '#1677FF' }, areaStyle: { color: 'rgba(22,119,255,0.1)' } }],
+    series: [{
+      type: 'line',
+      data: navValues,
+      smooth: true,
+      lineStyle: { color: '#1677FF', width: 2 },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(22,119,255,0.2)' },
+            { offset: 1, color: 'rgba(22,119,255,0.02)' },
+          ],
+        },
+      },
+      symbol: 'none',
+    }],
     grid: { left: 60, right: 20, top: 20, bottom: 30 },
   };
 
   const perfColumns = [
-    { title: '近1周', dataIndex: 'week1', render: (v: number) => <PriceChange value={v} /> },
-    { title: '近1月', dataIndex: 'month1', render: (v: number) => <PriceChange value={v} /> },
-    { title: '近3月', dataIndex: 'month3', render: (v: number) => <PriceChange value={v} /> },
-    { title: '近6月', dataIndex: 'month6', render: (v: number) => <PriceChange value={v} /> },
-    { title: '近1年', dataIndex: 'year1', render: (v: number) => <PriceChange value={v} /> },
-    { title: '近3年', dataIndex: 'year3', render: (v: number) => <PriceChange value={v} /> },
-    { title: '成立来', dataIndex: 'sinceEstablish', render: (v: number) => <PriceChange value={v} /> },
+    { title: '近1周', dataIndex: 'week1', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '近1月', dataIndex: 'month1', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '近3月', dataIndex: 'month3', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '近6月', dataIndex: 'month6', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '近1年', dataIndex: 'year1', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '近3年', dataIndex: 'year3', render: (v: number) => <PriceChange value={v} showBg /> },
+    { title: '成立来', dataIndex: 'sinceEstablish', render: (v: number) => <PriceChange value={v} showBg /> },
   ];
 
   const holdingColumns = [
-    { title: '股票代码', dataIndex: 'stockCode' },
+    { title: '股票代码', dataIndex: 'stockCode', render: (v: string) => <span className="fund-code" style={{ fontSize: 12 }}>{v}</span> },
     { title: '股票名称', dataIndex: 'stockName' },
-    { title: '占比(%)', dataIndex: 'ratio', render: (v: number) => `${v}%` },
-    { title: '今日涨跌', dataIndex: 'changePercent', render: (v: number) => v != null ? <PriceChange value={v} /> : '--' },
+    {
+      title: '占比(%)', dataIndex: 'ratio', render: (v: number) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1, background: '#f0f0f0', borderRadius: 3, height: 8 }}>
+            <div style={{ width: `${Math.min(v * 2, 100)}%`, background: '#1677FF', borderRadius: 3, height: '100%' }} />
+          </div>
+          <span style={{ width: 36, textAlign: 'right', fontSize: 12 }}>{v}%</span>
+        </div>
+      ),
+    },
+    { title: '今日涨跌', dataIndex: 'changePercent', render: (v: number) => v != null ? <PriceChange value={v} showBg size="sm" /> : '--' },
   ];
 
   const industryOption = {
@@ -121,125 +150,153 @@ const FundDetail: React.FC = () => {
       type: 'pie',
       radius: ['40%', '70%'],
       data: (detail.industryDist || []).map((d) => ({ name: d.industry, value: d.ratio })),
-      label: { fontSize: 11 },
+      label: { fontSize: 11, formatter: '{b} {d}%' },
+      itemStyle: { borderColor: '#fff', borderWidth: 2 },
     }],
   };
 
   return (
-    <div>
+    <div className="fund-fade-in">
       {/* Header */}
-      <Card style={{ marginBottom: 16 }}>
-        <Row justify="space-between" align="middle">
+      <Card className="fund-card-static" style={{ marginBottom: 16 }}>
+        <Row justify="space-between" align="top">
           <Col>
-            <h2 style={{ margin: 0 }}>{detail.name} <Tag>{formatFundType(detail.type)}</Tag></h2>
-            <div style={{ color: '#999', marginTop: 4 }}>{detail.code} | {detail.company} | {detail.manager}</div>
-          </Col>
-          <Col>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 28, fontWeight: 700 }}>{formatNav(detail.latestNav)}</div>
-              <div style={{ fontSize: 12, color: '#999' }}>
-                最新净值 ({detail.latestNavDate})
-                <div style={{ marginTop: 4 }}>
-                  <div>
-                    <Tag color="blue" style={{ fontSize: 11 }}>估值</Tag>{' '}
-                    <span style={{ color: getProfitColor(activeEstimate?.estimateReturn ?? detail.estimateReturn) }}>
-                      {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)} ({formatPercent(activeEstimate?.estimateReturn ?? detail.estimateReturn)})
-                    </span>
-                    {estimateSources.length > 0 ? (
-                      <Dropdown
-                        menu={{
-                          items: estimateSources.filter((s) => s.key !== 'actual').map((s) => ({
-                            key: s.key,
-                            label: (
-                              <div>
-                                <div style={{ fontWeight: activeEstimate?.key === s.key ? 600 : 400 }}>
-                                  {s.label} {!s.available && <Tag color="default" style={{ fontSize: 10 }}>不可用</Tag>}
-                                </div>
-                                {s.available && (
-                                  <div style={{ fontSize: 11, color: '#666' }}>
-                                    {formatNav(s.estimateNav)} ({formatPercent(s.estimateReturn)})
-                                  </div>
-                                )}
-                                <div style={{ fontSize: 11, color: '#999' }}>{s.description}</div>
-                              </div>
-                            ),
-                            disabled: !s.available,
-                          })),
-                          onClick: ({ key }) => {
-                            const source = estimateSources.find((s) => s.key === key);
-                            if (source) setActiveEstimate(source);
-                          },
-                        }}
-                        trigger={['click']}
-                      >
-                        <span style={{ marginLeft: 4, color: '#1677ff', cursor: 'pointer', fontSize: 12 }}>
-                          {activeEstimate?.label ?? '切换数据源'} <DownOutlined style={{ fontSize: 10 }} />
-                        </span>
-                      </Dropdown>
-                    ) : detail.estimateSource ? (
-                      <Tooltip title={`数据来源: ${detail.estimateSource}`}>
-                        <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', cursor: 'pointer' }} />
-                      </Tooltip>
-                    ) : null}
-                  </div>
-                  {actualSource && (
-                    <div style={{ marginTop: 4 }}>
-                      <Tag color="gold" style={{ fontSize: 11 }}>实际</Tag>{' '}
-                      <span style={{ color: getProfitColor(actualSource.estimateReturn), fontWeight: 600 }}>
-                        {formatNav(actualSource.estimateNav)} ({formatPercent(actualSource.estimateReturn)})
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>
+              {detail.name}{' '}
+              <Tag color={FUND_TYPE_TAG_COLOR[detail.type] || 'default'}>{formatFundType(detail.type)}</Tag>
+            </h2>
+            <div className="fund-secondary" style={{ marginTop: 6 }}>
+              <span className="fund-code" style={{ fontSize: 13 }}>{detail.code}</span>
+              <span style={{ margin: '0 8px', color: '#d9d9d9' }}>|</span>
+              {detail.company}
+              <span style={{ margin: '0 8px', color: '#d9d9d9' }}>|</span>
+              {detail.manager}
             </div>
           </Col>
+          <Col>
+            <Space>
+              <Button icon={<ReloadOutlined />} loading={refreshing} onClick={handleRefresh}>刷新</Button>
+              <Button
+                type={inWatchlist ? 'text' : 'default'}
+                icon={inWatchlist ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+                style={inWatchlist ? { color: '#faad14' } : undefined}
+                onClick={() => {
+                  if (inWatchlist) return;
+                  watchlistApi.add({ fundCode: detail.code }).then(() => {
+                    message.success('已添加到自选');
+                    setInWatchlist(true);
+                  }).catch(() => {});
+                }}
+              >{inWatchlist ? '已自选' : '自选'}</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/portfolio/add?fundCode=${detail.code}`)}>加持仓</Button>
+            </Space>
+          </Col>
         </Row>
-        <Space style={{ marginTop: 12 }}>
-          <Button icon={<ReloadOutlined />} loading={refreshing} onClick={handleRefresh}>刷新数据</Button>
-          <Button icon={<StarOutlined />} onClick={() => {
-            watchlistApi.add({ fundCode: detail.code }).then(() => message.success('已添加到自选')).catch(() => {});
-          }}>加自选</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/portfolio/add?fundCode=${detail.code}`)}>加持仓</Button>
-        </Space>
+
+        {/* NAV Info Grid */}
+        <div className="fund-nav-grid">
+          <div>
+            <div className="fund-stat-label">最新净值</div>
+            <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatNav(detail.latestNav)}</div>
+            <div className="fund-secondary">{detail.latestNavDate}</div>
+          </div>
+          <div>
+            <div className="fund-stat-label">
+              估值预测
+              {estimateSources.length > 0 ? (
+                <Dropdown
+                  menu={{
+                    items: estimateSources.filter((s) => s.key !== 'actual').map((s) => ({
+                      key: s.key,
+                      label: (
+                        <div style={{ padding: '2px 0' }}>
+                          <div style={{ fontWeight: activeEstimate?.key === s.key ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {activeEstimate?.key === s.key && <span style={{ color: '#1677FF' }}>✓</span>}
+                            {s.label}
+                            {!s.available && <Tag color="default" style={{ fontSize: 10 }}>不可用</Tag>}
+                          </div>
+                          {s.available && (
+                            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                              {formatNav(s.estimateNav)} ({formatPercent(s.estimateReturn)})
+                            </div>
+                          )}
+                        </div>
+                      ),
+                      disabled: !s.available,
+                    })),
+                    onClick: ({ key }) => {
+                      const source = estimateSources.find((s) => s.key === key);
+                      if (source) setActiveEstimate(source);
+                    },
+                  }}
+                  trigger={['click']}
+                >
+                  <span style={{ marginLeft: 6, color: '#1677ff', cursor: 'pointer', fontSize: 12 }}>
+                    {activeEstimate?.label ?? '切换源'} <DownOutlined style={{ fontSize: 10 }} />
+                  </span>
+                </Dropdown>
+              ) : detail.estimateSource ? (
+                <Tooltip title={`数据来源: ${detail.estimateSource}`}>
+                  <InfoCircleOutlined style={{ marginLeft: 4, color: '#bfbfbf', cursor: 'pointer' }} />
+                </Tooltip>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: getProfitColor(activeEstimate?.estimateReturn ?? detail.estimateReturn), fontVariantNumeric: 'tabular-nums' }}>
+              {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)}
+            </div>
+            <PriceChange value={activeEstimate?.estimateReturn ?? detail.estimateReturn} showBg />
+          </div>
+          {actualSource && (
+            <div>
+              <div className="fund-stat-label">
+                <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>实际</Tag> 今日净值
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 600, color: getProfitColor(actualSource.estimateReturn), fontVariantNumeric: 'tabular-nums' }}>
+                {formatNav(actualSource.estimateNav)}
+              </div>
+              <PriceChange value={actualSource.estimateReturn} showBg />
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* NAV Chart */}
-      <Card title="净值走势" extra={<Segmented size="small" options={PERIODS} value={period} onChange={(v) => setPeriod(v as string)} />} style={{ marginBottom: 16 }}>
-        <ReactECharts option={chartOption} style={{ height: 300 }} />
+      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>净值走势</span>} extra={<Segmented size="small" options={PERIODS} value={period} onChange={(v) => setPeriod(v as string)} />} style={{ marginBottom: 16 }}>
+        <ReactECharts option={chartOption} theme="fundTheme" style={{ height: 350 }} />
       </Card>
 
       {/* Performance */}
-      <Card title="历史业绩" style={{ marginBottom: 16 }}>
+      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>历史业绩</span>} style={{ marginBottom: 16 }}>
         <Table columns={perfColumns} dataSource={[detail.performance]} pagination={false} rowKey={() => 'perf'} size="small" />
       </Card>
 
       <Row gutter={16}>
-        {/* Top Holdings */}
         <Col span={12}>
-          <Card title="十大重仓股" style={{ marginBottom: 16 }}>
+          <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>十大重仓股</span>} style={{ marginBottom: 16 }}>
             <Table columns={holdingColumns} dataSource={detail.topHoldings || []} pagination={false} rowKey="stockCode" size="small" />
           </Card>
         </Col>
-        {/* Industry Distribution + Sector Changes */}
         <Col span={12}>
-          <Card title="行业分布" style={{ marginBottom: 16 }}>
+          <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>行业分布</span>} style={{ marginBottom: 16 }}>
             {detail.industryDist && detail.industryDist.length > 0
-              ? <ReactECharts option={industryOption} style={{ height: 280 }} />
-              : <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>暂无数据</div>
+              ? <ReactECharts option={industryOption} theme="fundTheme" style={{ height: 280 }} />
+              : <div style={{ textAlign: 'center', color: '#bfbfbf', padding: 40 }}>暂无数据</div>
             }
           </Card>
           {detail.sectorChanges && detail.sectorChanges.length > 0 && (
-            <Card title="关联行业板块今日涨幅" size="small" style={{ marginBottom: 16 }}>
+            <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>关联板块今日涨幅</span>} size="small" style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {detail.sectorChanges.map((s) => (
-                  <Tag
+                  <div
                     key={s.sectorName}
-                    color={s.changePercent > 0 ? 'red' : s.changePercent < 0 ? 'green' : 'default'}
-                    style={{ fontSize: 13, padding: '4px 8px' }}
+                    className="fund-sector-tag"
+                    style={{
+                      background: s.changePercent > 0 ? '#FFF1F0' : s.changePercent < 0 ? '#F6FFED' : '#FAFAFA',
+                      color: s.changePercent > 0 ? '#F5222D' : s.changePercent < 0 ? '#52C41A' : '#8C8C8C',
+                    }}
                   >
-                    {s.sectorName} <span style={{ fontWeight: 600 }}>{s.changePercent > 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%</span>
-                  </Tag>
+                    {s.sectorName}&nbsp;<span style={{ fontWeight: 600 }}>{s.changePercent > 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%</span>
+                  </div>
                 ))}
               </div>
             </Card>
@@ -248,10 +305,10 @@ const FundDetail: React.FC = () => {
       </Row>
 
       {/* Fund Info */}
-      <Card title="基金信息">
-        <Descriptions column={2} size="small">
-          <Descriptions.Item label="基金代码">{detail.code}</Descriptions.Item>
-          <Descriptions.Item label="基金类型">{formatFundType(detail.type)}</Descriptions.Item>
+      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>基金信息</span>}>
+        <Descriptions column={2} size="small" bordered>
+          <Descriptions.Item label="基金代码"><span className="fund-code" style={{ fontSize: 13 }}>{detail.code}</span></Descriptions.Item>
+          <Descriptions.Item label="基金类型"><Tag color={FUND_TYPE_TAG_COLOR[detail.type] || 'default'}>{formatFundType(detail.type)}</Tag></Descriptions.Item>
           <Descriptions.Item label="基金公司">{detail.company}</Descriptions.Item>
           <Descriptions.Item label="基金经理">{detail.manager}</Descriptions.Item>
           <Descriptions.Item label="成立日期">{detail.establishDate}</Descriptions.Item>

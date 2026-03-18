@@ -18,10 +18,8 @@ public class AddPositionRequest {
     @NotNull(message = "买入金额不能为空")
     private BigDecimal amount;
 
-    @NotNull(message = "买入份额不能为空")
     private BigDecimal shares;
 
-    @NotNull(message = "成交净值不能为空")
     private BigDecimal price;
 
     @NotNull(message = "交易日期不能为空")
