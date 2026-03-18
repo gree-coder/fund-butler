@@ -38,19 +38,44 @@ public class StockEstimateDataSource {
 
     /**
      * 通过重仓股实时行情估算基金涨幅
-     * 估算涨幅 = Σ(重仓股i的实时涨幅 × 持仓比例i) / 总持仓比例
+     * ETF基金优先使用二级市场实时交易价格，非ETF基金使用重仓股加权计算
+     * 优先使用完整持仓（年报/半年报），降级到十大重仓股
      */
     public Map<String, Object> estimateByStocks(String fundCode, BigDecimal lastNav) {
+        // ETF基金直接使用二级市场实时价格
+        if (isEtf(fundCode)) {
+            Map<String, Object> etfResult = estimateByEtfPrice(fundCode, lastNav);
+            if (!etfResult.isEmpty()) {
+                return etfResult;
+            }
+            log.warn("ETF实时价格获取失败，降级到重仓股估算: {}", fundCode);
+        }
+
         Map<String, Object> result = new HashMap<>();
         try {
-            // 1. 获取基金的重仓股数据
+            // 1. 获取基金的持仓数据，优先使用完整持仓
             Fund fund = fundMapper.selectById(fundCode);
-            if (fund == null || fund.getTopHoldings() == null || fund.getTopHoldings().isEmpty()) {
-                log.warn("基金重仓股数据不存在: {}", fundCode);
+            if (fund == null) {
+                log.warn("基金数据不存在: {}", fundCode);
                 return result;
             }
 
-            List<Map<String, Object>> holdings = fund.getTopHoldings();
+            List<Map<String, Object>> holdings = null;
+            String holdingsSource = "top10";
+
+            // 优先使用完整持仓（年报/半年报）
+            if (fund.getAllHoldings() != null && !fund.getAllHoldings().isEmpty()) {
+                holdings = fund.getAllHoldings();
+                holdingsSource = "all(" + holdings.size() + "只)";
+            } else if (fund.getTopHoldings() != null && !fund.getTopHoldings().isEmpty()) {
+                holdings = fund.getTopHoldings();
+                holdingsSource = "top10";
+            }
+
+            if (holdings == null || holdings.isEmpty()) {
+                log.warn("基金持仓数据不存在: {}", fundCode);
+                return result;
+            }
 
             // 2. 提取股票代码 (仅A股，跳过港股等非A股)
             List<String> stockCodes = new ArrayList<>();
@@ -73,8 +98,8 @@ public class StockEstimateDataSource {
 
             if (stockCodes.isEmpty()) return result;
 
-            // 3. 获取股票实时行情
-            Map<String, BigDecimal> stockReturns = fetchStockReturns(stockCodes);
+            // 3. 获取股票实时行情（分批请求，每批50只）
+            Map<String, BigDecimal> stockReturns = fetchStockReturnsBatched(stockCodes);
 
             // 4. 加权计算估算涨幅
             BigDecimal totalRatio = BigDecimal.ZERO;
@@ -99,12 +124,99 @@ public class StockEstimateDataSource {
                 result.put("estimateReturn", estimateReturn);
                 result.put("source", "stock_estimate");
                 result.put("coverageRatio", totalRatio);
-                log.info("股票兜底估值: fund={}, return={}, coverage={}%", fundCode, estimateReturn, totalRatio);
+                log.info("股票估值: fund={}, return={}, coverage={}%, holdings={}", fundCode, estimateReturn, totalRatio, holdingsSource);
             }
         } catch (Exception e) {
-            log.error("股票估值兜底失败: fund={}", fundCode, e);
+            log.error("股票估值失败: fund={}", fundCode, e);
         }
         return result;
+    }
+
+    /**
+     * 通过ETF二级市场实时交易价格估算涨幅
+     */
+    private Map<String, Object> estimateByEtfPrice(String fundCode, BigDecimal lastNav) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            String etfCode = formatEtfCode(fundCode);
+            if (etfCode.isEmpty()) return result;
+
+            String url = "https://push2.eastmoney.com/api/qt/ulist.np/get?"
+                    + "fields=f12,f14,f3&secids=" + etfCode;
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0")
+                    .header("Referer", "https://quote.eastmoney.com/")
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String body = response.body().string();
+                    JsonNode root = objectMapper.readTree(body);
+                    JsonNode diffs = root.path("data").path("diff");
+
+                    if (diffs.isArray() && diffs.size() > 0) {
+                        JsonNode diff = diffs.get(0);
+                        BigDecimal rawChange = parseBigDecimal(diff.path("f3").asText(""));
+                        BigDecimal estimateReturn = rawChange.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+
+                        BigDecimal estimateNav = lastNav.multiply(
+                                BigDecimal.ONE.add(estimateReturn.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP))
+                        ).setScale(4, RoundingMode.HALF_UP);
+
+                        result.put("estimateNav", estimateNav);
+                        result.put("estimateReturn", estimateReturn);
+                        result.put("source", "etf_realtime");
+                        log.info("ETF实时价格估值: fund={}, return={}%", fundCode, estimateReturn);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("ETF实时价格获取失败: fund={}", fundCode, e);
+        }
+        return result;
+    }
+
+    /**
+     * 判断是否为ETF基金
+     * 沪市ETF: 510xxx~518xxx (如 510050, 512100, 513050)
+     * 深市ETF: 159xxx (如 159915, 159919)
+     * 注意: 519xxx 是普通开放式基金，不是ETF
+     */
+    private boolean isEtf(String fundCode) {
+        if (fundCode == null || fundCode.length() != 6) return false;
+        if (fundCode.startsWith("159")) return true;
+        if (fundCode.startsWith("51") && !fundCode.startsWith("519")) return true;
+        return false;
+    }
+
+    /**
+     * 格式化ETF代码为东财格式
+     */
+    private String formatEtfCode(String fundCode) {
+        if (fundCode.startsWith("51") && !fundCode.startsWith("519")) return "1." + fundCode;   // 沪市ETF
+        if (fundCode.startsWith("159")) return "0." + fundCode;  // 深市ETF
+        return "";
+    }
+
+    /**
+     * 批量获取股票实时涨跌幅（分批请求，每批最多50只股票）
+     */
+    private Map<String, BigDecimal> fetchStockReturnsBatched(List<String> stockCodes) {
+        if (stockCodes.size() <= 50) {
+            return fetchStockReturns(stockCodes);
+        }
+
+        Map<String, BigDecimal> allReturns = new HashMap<>();
+        for (int i = 0; i < stockCodes.size(); i += 50) {
+            int end = Math.min(i + 50, stockCodes.size());
+            List<String> batch = stockCodes.subList(i, end);
+            Map<String, BigDecimal> batchReturns = fetchStockReturns(batch);
+            allReturns.putAll(batchReturns);
+        }
+        log.info("分批获取股票行情完成: 总数={}, 批次={}", stockCodes.size(), (stockCodes.size() + 49) / 50);
+        return allReturns;
     }
 
     /**
@@ -158,10 +270,10 @@ public class StockEstimateDataSource {
 
     /**
      * 格式化股票代码为东财格式
-     * 沪A: 1.600519 (6开头)
+     * 沪A: 1.600519 (6开头, 6位数字)
      * 深A: 0.300170 (0/3开头, 6位数字)
-     * 科创板: 1.688xxx
-     * 港股/其他: 返回空字符串 (不参与计算)
+     * 科创板: 1.688xxx (6开头, 6位数字)
+     * 港股: 116.00700 (4-5位数字)
      */
     private String formatStockCode(String code) {
         if (code == null) return "";
@@ -175,15 +287,15 @@ public class StockEstimateDataSource {
         // 必须是纯数字
         if (!code.matches("\\d+")) return "";
 
-        // 港股: 5位数字且以0开头 (如 00700, 09988, 01179)
-        if (code.length() == 5 && code.startsWith("0")) {
-            return "";
-        }
-
         // 标准6位A股代码
         if (code.length() == 6) {
             if (code.startsWith("6")) return "1." + code;  // 沪市
             if (code.startsWith("0") || code.startsWith("3")) return "0." + code;  // 深市
+        }
+
+        // 港股: 4-5位数字 (如 00700, 09988, 01179, 3690)
+        if (code.length() == 4 || code.length() == 5) {
+            return "116." + code;
         }
 
         return "";

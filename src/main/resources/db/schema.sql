@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS fund (
     risk_level      TINYINT       COMMENT '风险等级: 1低/2中低/3中/4中高/5高',
     fee_rate        JSON          COMMENT '费率信息JSON: {buy,sell,manage,custody}',
     top_holdings    JSON          COMMENT '十大重仓股JSON',
+    all_holdings    JSON          COMMENT '完整持仓JSON(年报/半年报)',
     industry_dist   JSON          COMMENT '行业分布JSON',
     updated_at      DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_type (type),

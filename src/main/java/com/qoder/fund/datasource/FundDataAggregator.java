@@ -243,11 +243,13 @@ public class FundDataAggregator {
         }
         sources.add(tencentItem);
 
-        // 数据源4: 基于重仓股实时行情加权估算
+        // 数据源4: 基于重仓股实时行情加权估算 / ETF实时价格
         EstimateSourceDTO.EstimateItem stockItem = new EstimateSourceDTO.EstimateItem();
         stockItem.setKey("stock");
         stockItem.setLabel("重仓股加权估算");
         stockItem.setDescription("基于基金重仓股的实时行情加权计算");
+        String stockSourceType = null;
+        BigDecimal coverageRatio = null;
         try {
             if (lastNav != null && lastNav.compareTo(BigDecimal.ZERO) > 0) {
                 Map<String, Object> stockEstimate = stockEstimateDataSource.estimateByStocks(fundCode, lastNav);
@@ -255,6 +257,13 @@ public class FundDataAggregator {
                     stockItem.setEstimateNav((BigDecimal) stockEstimate.get("estimateNav"));
                     stockItem.setEstimateReturn((BigDecimal) stockEstimate.get("estimateReturn"));
                     stockItem.setAvailable(true);
+                    stockSourceType = (String) stockEstimate.get("source");
+                    coverageRatio = (BigDecimal) stockEstimate.get("coverageRatio");
+                    // ETF基金使用实时价格时更新标签
+                    if ("etf_realtime".equals(stockSourceType)) {
+                        stockItem.setLabel("ETF实时价格");
+                        stockItem.setDescription("基于ETF二级市场实时交易价格");
+                    }
                 } else {
                     stockItem.setAvailable(false);
                 }
@@ -267,13 +276,23 @@ public class FundDataAggregator {
         }
         sources.add(stockItem);
 
+        // 获取基金类型用于智能预估
+        String fundType = null;
+        try {
+            Fund fund = fundMapper.selectById(fundCode);
+            if (fund != null) {
+                fundType = fund.getType();
+            }
+        } catch (Exception ignored) {}
+
         // 数据源5: 智能综合预估 (基于准确度选源，不受实际净值影响)
         EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
         smartItem.setKey("smart");
         smartItem.setLabel("智能综合预估");
 
         // 始终基于估值数据源的准确度进行选择，实际净值已单独展示
-        buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem);
+        buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem,
+                fundType, stockSourceType, coverageRatio);
         sources.add(smartItem);
 
         result.setSources(sources);
@@ -329,6 +348,17 @@ public class FundDataAggregator {
             fund.setFeeRate(detail.getFeeRate());
             fund.setTopHoldings(detail.getTopHoldings());
             fund.setIndustryDist(detail.getIndustryDist());
+
+            // 获取完整持仓（年报/半年报）
+            try {
+                List<Map<String, Object>> allHoldings = eastMoneyDataSource.fetchAllHoldings(detail.getCode());
+                if (allHoldings != null && !allHoldings.isEmpty()) {
+                    fund.setAllHoldings(allHoldings);
+                    detail.setAllHoldings(allHoldings);
+                }
+            } catch (Exception e) {
+                log.warn("获取完整持仓失败: {}", detail.getCode(), e);
+            }
 
             if (detail.getEstablishDate() != null) {
                 try {
@@ -426,14 +456,17 @@ public class FundDataAggregator {
     /**
      * 基于准确度选择最佳数据源构建智能预估
      * 查询最近3个交易日的预测记录，计算各源MAE，选MAE最小的源
-     * 若历史数据不足3条，回退到固定权重加权平均
+     * 若历史数据不足3条，回退到自适应权重加权平均
      */
     private void buildSmartEstimate(String fundCode,
                                     EstimateSourceDTO.EstimateItem eastMoneyItem,
                                     EstimateSourceDTO.EstimateItem sinaItem,
                                     EstimateSourceDTO.EstimateItem tencentItem,
                                     EstimateSourceDTO.EstimateItem stockItem,
-                                    EstimateSourceDTO.EstimateItem smartItem) {
+                                    EstimateSourceDTO.EstimateItem smartItem,
+                                    String fundType,
+                                    String stockSourceType,
+                                    BigDecimal coverageRatio) {
         Map<String, EstimateSourceDTO.EstimateItem> availableSources = new LinkedHashMap<>();
         if (eastMoneyItem.isAvailable()) availableSources.put("eastmoney", eastMoneyItem);
         if (sinaItem.isAvailable()) availableSources.put("sina", sinaItem);
@@ -461,19 +494,15 @@ public class FundDataAggregator {
             log.warn("准确度选源失败，回退到加权平均: {}", fundCode, e);
         }
 
-        // 回退: 固定权重加权平均
-        Map<String, BigDecimal> defaultWeights = new LinkedHashMap<>();
-        defaultWeights.put("eastmoney", new BigDecimal("0.35"));
-        defaultWeights.put("sina", new BigDecimal("0.25"));
-        defaultWeights.put("tencent", new BigDecimal("0.20"));
-        defaultWeights.put("stock", new BigDecimal("0.20"));
+        // 回退: 自适应权重加权平均
+        Map<String, BigDecimal> weights = determineAdaptiveWeights(fundCode, fundType, stockSourceType, coverageRatio);
 
         BigDecimal totalWeight = BigDecimal.ZERO;
         BigDecimal weightedNav = BigDecimal.ZERO;
         BigDecimal weightedReturn = BigDecimal.ZERO;
 
         for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
-            BigDecimal w = defaultWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            BigDecimal w = weights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
             totalWeight = totalWeight.add(w);
             weightedNav = weightedNav.add(entry.getValue().getEstimateNav().multiply(w));
             weightedReturn = weightedReturn.add(entry.getValue().getEstimateReturn().multiply(w));
@@ -482,7 +511,97 @@ public class FundDataAggregator {
         smartItem.setEstimateNav(weightedNav.divide(totalWeight, 4, RoundingMode.HALF_UP));
         smartItem.setEstimateReturn(weightedReturn.divide(totalWeight, 2, RoundingMode.HALF_UP));
         smartItem.setAvailable(true);
-        smartItem.setDescription("综合多数据源加权平均 (准确度数据不足，使用默认权重)");
+        smartItem.setDescription(buildAdaptiveDescription(fundType, stockSourceType, coverageRatio));
+    }
+
+    /**
+     * 根据基金类型、stock源类型、覆盖率确定自适应权重
+     */
+    private Map<String, BigDecimal> determineAdaptiveWeights(String fundCode, String fundType,
+                                                              String stockSourceType, BigDecimal coverageRatio) {
+        Map<String, BigDecimal> weights = new LinkedHashMap<>();
+        String scenario;
+
+        // 场景A: ETF实时价格 — 极高精度
+        if ("etf_realtime".equals(stockSourceType)) {
+            weights.put("eastmoney", new BigDecimal("0.15"));
+            weights.put("sina", new BigDecimal("0.08"));
+            weights.put("tencent", new BigDecimal("0.07"));
+            weights.put("stock", new BigDecimal("0.70"));
+            scenario = "ETF实时";
+        }
+        // 场景B: 债券/货币基金 — 股票仓位极低
+        else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
+            weights.put("eastmoney", new BigDecimal("0.45"));
+            weights.put("sina", new BigDecimal("0.25"));
+            weights.put("tencent", new BigDecimal("0.25"));
+            weights.put("stock", new BigDecimal("0.05"));
+            scenario = "固收类";
+        }
+        // 场景C: QDII — 海外持仓获取不完整
+        else if ("QDII".equals(fundType)) {
+            weights.put("eastmoney", new BigDecimal("0.40"));
+            weights.put("sina", new BigDecimal("0.25"));
+            weights.put("tencent", new BigDecimal("0.25"));
+            weights.put("stock", new BigDecimal("0.10"));
+            scenario = "QDII";
+        }
+        // 权益类: 根据覆盖率分档
+        else {
+            BigDecimal cov = coverageRatio != null ? coverageRatio : BigDecimal.ZERO;
+            if (cov.compareTo(new BigDecimal("60")) >= 0) {
+                // 场景D: 高覆盖率 ≥60%
+                weights.put("eastmoney", new BigDecimal("0.30"));
+                weights.put("sina", new BigDecimal("0.18"));
+                weights.put("tencent", new BigDecimal("0.17"));
+                weights.put("stock", new BigDecimal("0.35"));
+                scenario = "权益高覆盖";
+            } else if (cov.compareTo(new BigDecimal("30")) >= 0) {
+                // 场景E: 中覆盖率 30%-60%
+                weights.put("eastmoney", new BigDecimal("0.38"));
+                weights.put("sina", new BigDecimal("0.24"));
+                weights.put("tencent", new BigDecimal("0.23"));
+                weights.put("stock", new BigDecimal("0.15"));
+                scenario = "权益中覆盖";
+            } else {
+                // 场景F: 低覆盖率 <30% (含ETF联接基金)
+                weights.put("eastmoney", new BigDecimal("0.43"));
+                weights.put("sina", new BigDecimal("0.26"));
+                weights.put("tencent", new BigDecimal("0.26"));
+                weights.put("stock", new BigDecimal("0.05"));
+                scenario = "权益低覆盖";
+            }
+        }
+
+        log.info("基金{}自适应权重: type={}, stockSource={}, coverage={}%, 场景={}",
+                fundCode, fundType, stockSourceType,
+                coverageRatio != null ? coverageRatio.setScale(1, RoundingMode.HALF_UP) : "N/A",
+                scenario);
+        return weights;
+    }
+
+    /**
+     * 生成自适应权重的描述文案
+     */
+    private String buildAdaptiveDescription(String fundType, String stockSourceType, BigDecimal coverageRatio) {
+        if ("etf_realtime".equals(stockSourceType)) {
+            return "基于ETF实时价格的高置信度加权";
+        }
+        if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
+            return "固收类基金加权平均（以机构估值为主）";
+        }
+        if ("QDII".equals(fundType)) {
+            return "QDII基金加权平均（海外持仓估算可靠性低）";
+        }
+        BigDecimal cov = coverageRatio != null ? coverageRatio : BigDecimal.ZERO;
+        String covStr = cov.setScale(0, RoundingMode.HALF_UP).toPlainString();
+        if (cov.compareTo(new BigDecimal("60")) >= 0) {
+            return "多源加权平均（重仓股覆盖率" + covStr + "%，权重35%）";
+        } else if (cov.compareTo(new BigDecimal("30")) >= 0) {
+            return "多源加权平均（重仓股覆盖率" + covStr + "%，权重降至15%）";
+        } else {
+            return "多源加权平均（重仓股覆盖率仅" + covStr + "%，权重降至5%）";
+        }
     }
 
     /**

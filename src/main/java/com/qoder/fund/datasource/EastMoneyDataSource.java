@@ -347,11 +347,13 @@ public class EastMoneyDataSource implements FundDataSource {
     private String mapFundTypeFromDetail(String type) {
         if (type == null) return null;
         String clean = type.replaceAll("<[^>]+>", "").trim();
-        if (clean.contains("股票")) return "STOCK";
-        if (clean.contains("混合")) return "MIXED";
+        // QDII/海外 优先判断（"QDII-混合型"、"指数型-海外股票"应归为QDII）
+        if (clean.contains("QDII") || clean.contains("海外")) return "QDII";
+        // 债券优先于混合（"混合债券型"应归为BOND）
         if (clean.contains("债券")) return "BOND";
         if (clean.contains("货币")) return "MONEY";
-        if (clean.contains("QDII")) return "QDII";
+        if (clean.contains("股票")) return "STOCK";
+        if (clean.contains("混合")) return "MIXED";
         if (clean.contains("指数")) return "INDEX";
         return clean;
     }
@@ -399,21 +401,72 @@ public class EastMoneyDataSource implements FundDataSource {
 
     private void fetchPerformance(String fundCode, FundDetailDTO dto) {
         try {
-            // 从净值历史计算业绩
+            // 从pingzhongdata获取基础业绩
             String url = "https://fund.eastmoney.com/pingzhongdata/" + fundCode + ".js";
             String body = httpGet(url);
-            if (body == null) return;
-
-            String growthStr = extractJsArray(body, "syl_1n");
-            String growthStr3m = extractJsArray(body, "syl_3y");
-            String growthStr6m = extractJsArray(body, "syl_6y");
 
             FundDetailDTO.PerformanceDTO perf = new FundDetailDTO.PerformanceDTO();
-            // 从净值数据计算简单业绩(近1月)
-            perf.setMonth1(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_1y")));
-            perf.setMonth3(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_3y")));
-            perf.setMonth6(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_6y")));
-            perf.setYear1(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_1n")));
+            if (body != null) {
+                perf.setMonth1(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_1y")));
+                perf.setMonth3(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_3y")));
+                perf.setMonth6(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_6y")));
+                perf.setYear1(parseBigDecimalOrNull(extractJsSimpleVar(body, "syl_1n")));
+            }
+
+            // 从基金主页获取完整阶段涨幅（近1周、近3年、成立以来等）
+            try {
+                String mainUrl = "https://fund.eastmoney.com/" + fundCode + ".html";
+                String mainBody = httpGet(mainUrl);
+                if (mainBody != null) {
+                    // 解析dd标签中的业绩摘要: <dd><span>近1周：</span><span class="...">-3.97%</span></dd>
+                    Pattern ddPattern = Pattern.compile(
+                            "<dd><span>([^<]+)</span>\\s*<span[^>]*>([^<]+)</span></dd>");
+                    Matcher ddMatcher = ddPattern.matcher(mainBody);
+                    while (ddMatcher.find()) {
+                        String label = ddMatcher.group(1).trim();
+                        String value = ddMatcher.group(2).trim();
+                        if (label.contains("近3年")) {
+                            perf.setYear3(parseBigDecimalOrNull(value));
+                        } else if (label.contains("成立")) {
+                            perf.setSinceEstablish(parseBigDecimalOrNull(value));
+                        }
+                    }
+
+                    // 解析阶段涨幅表格获取近1周数据
+                    // 表头: ['', '近1周', '近1月', '近3月', '近6月', '今年来', '近1年', '近2年', '近3年']
+                    // 数据: ['阶段涨幅', '-3.97%', '-2.29%', ...]
+                    int weekIdx = mainBody.indexOf("近1周");
+                    if (weekIdx >= 0) {
+                        int tableStart = mainBody.lastIndexOf("<table", weekIdx);
+                        int tableEnd = mainBody.indexOf("</table>", weekIdx);
+                        if (tableStart >= 0 && tableEnd >= 0) {
+                            String table = mainBody.substring(tableStart, tableEnd);
+                            // 找到"阶段涨幅"行，第2个td就是近1周
+                            int rowIdx = table.indexOf("阶段涨幅");
+                            if (rowIdx >= 0) {
+                                String rowSection = table.substring(rowIdx);
+                                Pattern tdPat = Pattern.compile("<td[^>]*>(.*?)</td>", Pattern.DOTALL);
+                                Matcher tdMat = tdPat.matcher(rowSection);
+                                List<String> cells = new ArrayList<>();
+                                while (tdMat.find()) {
+                                    cells.add(tdMat.group(1).replaceAll("<[^>]+>", "").trim());
+                                }
+                                // substring从"阶段涨幅"开始，第1个<td>匹配的是近1周
+                                if (cells.size() > 0) {
+                                    perf.setWeek1(parseBigDecimalOrNull(cells.get(0)));
+                                }
+                                // 补充: 如果year3还没拿到，从表格取 (index 7)
+                                if (perf.getYear3() == null && cells.size() > 7) {
+                                    perf.setYear3(parseBigDecimalOrNull(cells.get(7)));
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("从基金主页获取完整业绩失败: code={}", fundCode, e);
+            }
+
             dto.setPerformance(perf);
         } catch (Exception e) {
             log.warn("获取业绩失败: code={}", fundCode, e);
@@ -691,5 +744,122 @@ public class EastMoneyDataSource implements FundDataSource {
             case "指数型" -> "INDEX";
             default -> "MIXED";
         };
+    }
+
+    /**
+     * 获取基金完整持仓（从年报/半年报）
+     * 年报(Q4)和半年报(Q2)会披露完整持仓，季报(Q1/Q3)只有前10大重仓股
+     * 此方法获取所有报告期的持仓表格，选择持仓数量最多的那个（通常是半年报/年报）
+     *
+     * @return 完整持仓列表，每项包含 stockCode 和 ratio
+     */
+    public List<Map<String, Object>> fetchAllHoldings(String fundCode) {
+        try {
+            String url = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=" + fundCode + "&topline=1000";
+            String body = httpGetWithReferer(url);
+            if (body == null || !body.contains("<tbody>")) {
+                log.warn("完整持仓数据为空: {}", fundCode);
+                return Collections.emptyList();
+            }
+
+            // 按 <table> 标签分割所有表格（包含 thead 和 tbody）
+            List<String> tables = new ArrayList<>();
+            int searchFrom = 0;
+            while (true) {
+                int tableStart = body.indexOf("<table", searchFrom);
+                if (tableStart < 0) break;
+                int tableEnd = body.indexOf("</table>", tableStart);
+                if (tableEnd < 0) break;
+                tables.add(body.substring(tableStart, tableEnd + "</table>".length()));
+                searchFrom = tableEnd + 1;
+            }
+
+            if (tables.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // 在每个表格中解析持仓，选取持仓数量最多的表格
+            List<Map<String, Object>> bestHoldings = Collections.emptyList();
+            for (int tableIdx = 0; tableIdx < tables.size(); tableIdx++) {
+                String tableHtml = tables.get(tableIdx);
+                List<Map<String, Object>> holdings = parseHoldingsTable(tableHtml, tableIdx);
+                if (holdings.size() > bestHoldings.size()) {
+                    bestHoldings = holdings;
+                }
+            }
+
+            log.info("完整持仓获取: fund={}, 最佳表格持仓数={}", fundCode, bestHoldings.size());
+            return bestHoldings;
+        } catch (Exception e) {
+            log.error("获取完整持仓失败: {}", fundCode, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 解析单个持仓表格的HTML
+     * 表格0（最新季度）通常有9列：序号、代码、名称、最新价、涨跌幅、相关资讯、占净值比例、持股数、持仓市值
+     * 其他表格（历史报告期）通常有7列：序号、代码、名称、占净值比例、持股数、持仓市值、(可能有其他列)
+     * 通过查找"占净值比例"所在列来动态定位ratio
+     */
+    private List<Map<String, Object>> parseHoldingsTable(String tableHtml, int tableIdx) {
+        List<Map<String, Object>> holdings = new ArrayList<>();
+        try {
+            // 动态检测列数和ratio列位置
+            // 先找 <thead> 中的表头来确定 ratio 列索引
+            int ratioColIndex = -1;
+            Pattern thPattern = Pattern.compile("<th[^>]*>(.*?)</th>", Pattern.DOTALL);
+            Matcher thMatcher = thPattern.matcher(tableHtml);
+            int colIdx = 0;
+            while (thMatcher.find()) {
+                String headerText = thMatcher.group(1).replaceAll("<[^>]+>", "").trim();
+                if (headerText.contains("占净值比例")) {
+                    ratioColIndex = colIdx;
+                    break;
+                }
+                colIdx++;
+            }
+
+            // 如果没有找到表头，根据表格索引使用默认值
+            // 表格0: 9列，占净值比例在index 6
+            // 其他表格: 7列，占净值比例在index 4
+            if (ratioColIndex < 0) {
+                ratioColIndex = (tableIdx == 0) ? 6 : 4;
+            }
+
+            // 解析每一行 — 使用字符串分割代替全局正则，避免大HTML上的回溯性能问题
+            Pattern tdPattern = Pattern.compile("<td[^>]*>(.*?)</td>", Pattern.DOTALL);
+            String[] rows = tableHtml.split("<tr>");
+            for (String rowSegment : rows) {
+                int trEnd = rowSegment.indexOf("</tr>");
+                if (trEnd < 0) continue;
+                String row = rowSegment.substring(0, trEnd);
+
+                // 检查第一个 <td> 是否为数字序号
+                Matcher firstTd = Pattern.compile("<td>(\\d+)</td>").matcher(row);
+                if (!firstTd.find()) continue;
+
+                Matcher tdMatcher = tdPattern.matcher(row);
+                List<String> cells = new ArrayList<>();
+                while (tdMatcher.find()) {
+                    cells.add(tdMatcher.group(1).replaceAll("<[^>]+>", "").trim());
+                }
+
+                if (cells.size() > ratioColIndex && cells.size() >= 3) {
+                    String stockCode = cells.get(1);
+                    String ratioStr = cells.get(ratioColIndex);
+                    BigDecimal ratio = parseBigDecimal(ratioStr);
+                    if (ratio.compareTo(BigDecimal.ZERO) > 0 && !stockCode.isEmpty()) {
+                        Map<String, Object> h = new HashMap<>();
+                        h.put("stockCode", stockCode);
+                        h.put("ratio", ratio);
+                        holdings.add(h);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析持仓表格失败: tableIdx={}", tableIdx, e);
+        }
+        return holdings;
     }
 }

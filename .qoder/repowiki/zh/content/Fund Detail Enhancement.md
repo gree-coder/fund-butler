@@ -5,6 +5,9 @@
 - [PRD.md](file://PRD.md)
 - [application.yml](file://src/main/resources/application.yml)
 - [FundDetail.tsx](file://fund-web/src/pages/Fund/FundDetail.tsx)
+- [AppLayout.tsx](file://fund-web/src/components/AppLayout.tsx)
+- [SearchResult.tsx](file://fund-web/src/pages/Fund/SearchResult.tsx)
+- [App.tsx](file://fund-web/src/App.tsx)
 - [FundController.java](file://src/main/java/com/qoder/fund/controller/FundController.java)
 - [FundService.java](file://src/main/java/com/qoder/fund/service/FundService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
@@ -18,7 +21,15 @@
 - [schema.sql](file://src/main/resources/db/schema.sql)
 - [Fund.java](file://src/main/java/com/qoder/fund/entity/Fund.java)
 - [FundMapper.java](file://src/main/java/com/qoder/fund/mapper/FundMapper.java)
+- [searchStore.ts](file://fund-web/src/store/searchStore.ts)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 增强了AppLayout组件的导航持久性功能，实现路径跟踪机制
+- 改善用户在'基金查询'区域内的浏览体验
+- 新增了lastSearchPath引用和useEffect路径跟踪逻辑
+- 优化了菜单选择状态判断逻辑
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -41,6 +52,7 @@
 - **Web优先**：无需下载App，浏览器直接使用，跨设备同步
 - **数据聚合**：汇总多平台持仓，一屏掌握投资全貌
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
+- **导航持久性**：增强的路径跟踪机制，改善用户浏览体验
 
 ### 技术架构
 
@@ -51,6 +63,7 @@
 ```mermaid
 graph TB
 subgraph "前端应用 (fund-web)"
+FE_LAYOUT[AppLayout导航组件]
 FE_API[API层]
 FE_PAGES[页面组件]
 FE_UTILS[工具函数]
@@ -72,6 +85,7 @@ DB_TRANSACTION[交易表]
 DB_WATCHLIST[自选表]
 DB_PREDICTION[预测表]
 end
+FE_LAYOUT --> FE_PAGES
 FE_API --> BE_CONTROLLER
 BE_CONTROLLER --> BE_SERVICE
 BE_SERVICE --> BE_DATASOURCE
@@ -84,6 +98,7 @@ BE_MAPPER --> DB_NAV
 ```
 
 **图表来源**
+- [AppLayout.tsx:1-114](file://fund-web/src/components/AppLayout.tsx#L1-L114)
 - [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
 - [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
 - [FundDataAggregator.java:1-541](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L541)
@@ -96,6 +111,14 @@ BE_MAPPER --> DB_NAV
 
 ### 前端核心组件
 
+#### 应用布局组件 (AppLayout)
+应用布局组件是系统的核心导航组件，现已增强导航持久性功能：
+
+- **路径跟踪机制**：使用useRef和useEffect跟踪最后访问的"基金查询"区域路径
+- **智能菜单选择**：根据当前路径智能选择菜单高亮状态
+- **导航持久性**：确保用户在基金查询区域内的浏览路径得到保持
+- **响应式导航**：支持移动端和桌面端的导航体验
+
 #### 基金详情页面 (FundDetail)
 基金详情页面是系统的核心组件，提供完整的基金信息展示和交互功能：
 
@@ -104,6 +127,14 @@ BE_MAPPER --> DB_NAV
 - **历史业绩对比**：展示近1周到成立以来的业绩表现
 - **持仓分析**：十大重仓股和行业分布可视化
 - **快速操作**：添加自选、加持仓、刷新数据等功能
+
+#### 基金搜索结果页面 (SearchResult)
+基金搜索结果页面提供基金搜索和结果展示功能：
+
+- **实时搜索**：支持按基金名称、代码的实时搜索
+- **搜索状态管理**：使用Zustand状态管理搜索关键词和结果
+- **结果列表展示**：以列表形式展示搜索结果，支持点击查看详情
+- **快速操作**：支持添加自选、添加持仓等快捷操作
 
 #### API接口层
 前端通过统一的API接口与后端通信，包括：
@@ -139,7 +170,9 @@ FundDataAggregator实现多数据源聚合和降级策略：
 - 缓存策略：多级缓存优化性能
 
 **章节来源**
+- [AppLayout.tsx:1-114](file://fund-web/src/components/AppLayout.tsx#L1-L114)
 - [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
+- [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
 - [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
 - [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
 - [FundDataAggregator.java:1-541](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L541)
@@ -149,13 +182,16 @@ FundDataAggregator实现多数据源聚合和降级策略：
 ```mermaid
 sequenceDiagram
 participant Client as 客户端
+participant Layout as AppLayout导航
 participant Controller as 基金控制器
 participant Service as 基金服务
 participant Aggregator as 数据聚合器
 participant EastMoney as 东方财富数据源
 participant StockEstimate as 股票估算数据源
 participant DB as 数据库
-Client->>Controller : GET /api/fund/{code}
+Client->>Layout : 导航到基金查询区域
+Layout->>Layout : 跟踪lastSearchPath
+Layout->>Controller : GET /api/fund/{code}
 Controller->>Service : getDetail(code)
 Service->>Aggregator : getFundDetail(code)
 Aggregator->>EastMoney : getFundDetail(code)
@@ -171,6 +207,7 @@ Controller-->>Client : JSON响应
 ```
 
 **图表来源**
+- [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
 - [FundController.java:32-40](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L40)
 - [FundService.java:33-35](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L35)
 - [FundDataAggregator.java:57-73](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L57-L73)
@@ -179,26 +216,85 @@ Controller-->>Client : JSON响应
 
 ```mermaid
 flowchart TD
-A[前端请求) --> B[控制器层]
-B --> C[服务层]
-C --> D[数据聚合层]
-D --> E[主数据源查询]
-E --> F{查询成功?}
-F --> |是| G[返回数据]
-F --> |否| H[备用数据源查询]
-H --> I[股票估算兜底]
-I --> J[缓存数据]
-J --> K[返回数据]
-G --> L[持久化处理]
-L --> M[返回响应]
-K --> M
+A[前端导航) --> B[AppLayout组件]
+B --> C[路径跟踪逻辑]
+C --> D[lastSearchPath引用]
+D --> E[useEffect监听]
+E --> F{路径变化?}
+F --> |是| G[更新lastSearchPath]
+F --> |否| H[保持当前路径]
+G --> I[菜单选择逻辑]
+H --> I
+I --> J[智能高亮]
+J --> K[导航持久性]
+K --> L[用户浏览体验]
 ```
 
 **图表来源**
-- [FundDataAggregator.java:86-106](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L86-L106)
-- [EastMoneyDataSource.java:78-100](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L78-L100)
+- [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
+- [AppLayout.tsx:42-48](file://fund-web/src/components/AppLayout.tsx#L42-L48)
 
 ## 详细组件分析
+
+### 应用布局组件分析
+
+#### 导航持久性功能增强
+```mermaid
+classDiagram
+class AppLayout {
++useRef lastSearchPath
++useEffect trackPath()
++handleMenuClick()
++selectedKey
++render() Layout
+}
+class PathTracker {
++string currentPath
++string lastSearchPath
++trackLastSearchPath()
++persistNavigation()
+}
+class NavigationState {
++boolean isFundDetail
++string selectedKey
++boolean isSearchSection
++updateNavigationState()
+}
+AppLayout --> PathTracker : "使用"
+AppLayout --> NavigationState : "管理"
+PathTracker --> NavigationState : "影响"
+```
+
+**图表来源**
+- [AppLayout.tsx:21-48](file://fund-web/src/components/AppLayout.tsx#L21-L48)
+- [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
+
+#### 路径跟踪机制实现
+```mermaid
+sequenceDiagram
+participant User as 用户
+participant Layout as AppLayout
+participant Ref as useRef
+participant Effect as useEffect
+participant Router as 路由器
+User->>Layout : 导航到基金查询
+Layout->>Effect : 监听location变化
+Effect->>Router : 获取当前路径
+Router-->>Effect : 返回pathname和search
+Effect->>Ref : 更新lastSearchPath
+Ref-->>Layout : 保存最新路径
+Layout->>Layout : 更新菜单选择状态
+Layout-->>User : 显示导航持久化效果
+```
+
+**图表来源**
+- [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
+- [AppLayout.tsx:34-40](file://fund-web/src/components/AppLayout.tsx#L34-L40)
+
+**更新** 增强了AppLayout组件的导航持久性功能，通过useRef和useEffect实现路径跟踪机制，确保用户在"基金查询"区域内的浏览路径得到保持和恢复。
+
+**章节来源**
+- [AppLayout.tsx:1-114](file://fund-web/src/components/AppLayout.tsx#L1-L114)
 
 ### 基金详情页面组件分析
 
@@ -292,6 +388,52 @@ API-->>Page : 返回数据
 - [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
 - [fund.ts:61-76](file://fund-web/src/api/fund.ts#L61-L76)
 
+### 基金搜索结果组件分析
+
+#### 搜索状态管理
+```mermaid
+stateDiagram-v2
+[*] --> Idle
+Idle --> Searching : 用户输入关键词
+Searching --> Loading : 发起API请求
+Loading --> Loaded : 获取搜索结果
+Loaded --> Idle : 用户继续搜索
+Loaded --> DetailView : 点击查看详情
+DetailView --> Searching : 返回搜索结果
+Searching --> Empty : 无搜索结果
+Empty --> Idle : 清空关键词
+```
+
+**图表来源**
+- [SearchResult.tsx:20-32](file://fund-web/src/pages/Fund/SearchResult.tsx#L20-L32)
+- [searchStore.ts:10-14](file://fund-web/src/store/searchStore.ts#L10-L14)
+
+#### 搜索流程优化
+```mermaid
+flowchart TD
+A[用户输入关键词] --> B{URL参数存在?}
+B --> |是| C[使用URL关键词]
+B --> |否| D[使用状态存储关键词]
+C --> E{关键词变化?}
+D --> E
+E --> |是| F[发起搜索请求]
+E --> |否| G[使用缓存结果]
+F --> H[更新搜索状态]
+G --> I[渲染搜索结果]
+H --> I
+I --> J[用户操作]
+J --> K[跳转到详情页]
+K --> L[导航持久化]
+```
+
+**图表来源**
+- [SearchResult.tsx:11-32](file://fund-web/src/pages/Fund/SearchResult.tsx#L11-L32)
+- [AppLayout.tsx:34-40](file://fund-web/src/components/AppLayout.tsx#L34-L40)
+
+**章节来源**
+- [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
+- [searchStore.ts:1-15](file://fund-web/src/store/searchStore.ts#L1-L15)
+
 ### 数据聚合器组件分析
 
 #### 多数据源策略
@@ -365,29 +507,33 @@ C[Ant Design 5]
 D[ECharts]
 E[Zustand]
 F[Vite]
+G[React Router DOM]
 end
 subgraph "后端技术栈"
-G[Spring Boot]
-H[MyBatis-Plus]
-I[OkHttp3]
-J[Caffeine Cache]
-K[MySQL]
+H[Spring Boot]
+I[MyBatis-Plus]
+J[OkHttp3]
+K[Caffeine Cache]
+L[MySQL]
 end
 subgraph "数据源"
-L[东方财富API]
-M[新浪财经API]
-N[腾讯财经API]
-O[股票实时行情]
+M[东方财富API]
+N[新浪财经API]
+O[腾讯财经API]
+P[股票实时行情]
 end
 A --> C
 A --> D
-G --> H
-G --> J
-H --> K
-G --> L
-G --> M
-G --> N
-G --> O
+A --> G
+G --> A
+E --> A
+H --> I
+H --> J
+I --> L
+H --> M
+H --> N
+H --> O
+H --> P
 ```
 
 **图表来源**
@@ -460,6 +606,15 @@ POSITION }|--|| FUND : "fund_code"
 - 图表渲染优化，使用ECharts高性能渲染
 - 组件懒加载，提升首屏加载速度
 - 数据格式化函数优化，减少重复计算
+- **导航持久性优化**：通过useRef避免不必要的重渲染
+
+### 导航持久性性能优化
+- 使用useRef存储lastSearchPath，避免状态更新触发重渲染
+- useEffect仅在location变化时执行路径跟踪逻辑
+- 智能菜单选择逻辑，减少DOM操作次数
+
+**章节来源**
+- [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
 
 ## 故障排除指南
 
@@ -480,9 +635,15 @@ POSITION }|--|| FUND : "fund_code"
 2. **检查数据源状态**：确认各数据源API正常运行
 3. **验证数据格式**：确保数据转换过程正确
 
+#### 导航持久性问题
+1. **检查路径跟踪逻辑**：确认useEffect正确监听location变化
+2. **验证lastSearchPath引用**：确保路径正确存储和更新
+3. **测试菜单选择逻辑**：确认selectedKey正确计算
+
 **章节来源**
 - [FundDataAggregator.java:158-169](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L158-L169)
 - [application.yml:18-21](file://src/main/resources/application.yml#L18-L21)
+- [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
 
 ## 结论
 
@@ -492,5 +653,11 @@ POSITION }|--|| FUND : "fund_code"
 2. **用户体验优化**：丰富的可视化图表和直观的操作界面
 3. **性能保障**：多级缓存和异步处理机制，保证系统的响应速度
 4. **可扩展性**：模块化的架构设计，便于后续功能扩展
+5. **导航持久性增强**：新增的路径跟踪机制显著改善了用户在"基金查询"区域内的浏览体验
+
+**更新亮点**：
+- AppLayout组件的导航持久性功能增强了用户在基金查询区域内的浏览连续性
+- 通过lastSearchPath引用和useEffect路径跟踪，实现了智能的导航状态保持
+- 改善了用户从搜索结果到基金详情的导航体验，减少了路径丢失的问题
 
 项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。

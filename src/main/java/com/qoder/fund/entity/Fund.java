@@ -35,6 +35,9 @@ public class Fund {
     private List<Map<String, Object>> topHoldings;
 
     @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Map<String, Object>> allHoldings;
+
+    @TableField(typeHandler = JacksonTypeHandler.class)
     private List<Map<String, Object>> industryDist;
 
     private LocalDateTime updatedAt;

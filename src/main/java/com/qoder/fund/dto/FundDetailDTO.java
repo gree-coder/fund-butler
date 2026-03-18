@@ -1,5 +1,6 @@
 package com.qoder.fund.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -18,6 +19,8 @@ public class FundDetailDTO {
     private Integer riskLevel;
     private Map<String, Object> feeRate;
     private List<Map<String, Object>> topHoldings;
+    @JsonIgnore
+    private List<Map<String, Object>> allHoldings;
     private List<Map<String, Object>> industryDist;
     private BigDecimal latestNav;
     private String latestNavDate;
