@@ -112,13 +112,27 @@ public class EastMoneyDataSource implements FundDataSource {
     private List<Map<String, Object>> fetchNavFromLsjz(String fundCode, String startDate, String endDate) {
         try {
             String url = "https://api.fund.eastmoney.com/f10/lsjz?fundCode=" + fundCode
-                    + "&pageIndex=1&pageSize=365&startDate=" + startDate + "&endDate=" + endDate;
+                    + "&pageIndex=1&pageSize=200&startDate=" + startDate + "&endDate=" + endDate;
             String body = httpGetWithReferer(url);
-            if (body == null) return Collections.emptyList();
+            if (body == null) {
+                log.debug("lsjz API返回null: code={}", fundCode);
+                return Collections.emptyList();
+            }
 
             JsonNode root = objectMapper.readTree(body);
             JsonNode data = root.path("Data");
-            if (data.isNull() || data.isMissingNode()) return Collections.emptyList();
+            if (data.isNull() || data.isMissingNode()) {
+                // 可能被限流: API返回了非预期结构
+                String errMsg = root.path("ErrMsg").asText("");
+                int errCode = root.path("ErrCode").asInt(-1);
+                if (errCode != 0 || !errMsg.isEmpty()) {
+                    log.warn("lsjz API返回错误: code={}, errCode={}, errMsg={}", fundCode, errCode, errMsg);
+                } else {
+                    log.debug("lsjz API Data为空: code={}, resp={}", fundCode,
+                            body.substring(0, Math.min(200, body.length())));
+                }
+                return Collections.emptyList();
+            }
             JsonNode list = data.path("LSJZList");
             List<Map<String, Object>> results = new ArrayList<>();
 

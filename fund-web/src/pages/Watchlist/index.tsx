@@ -152,7 +152,7 @@ const Watchlist: React.FC = () => {
                 </div>
                 {item.actualReturn != null && (
                   <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <Tag color="gold" style={{ margin: 0, fontSize: 11 }}>实际</Tag>
+                    <Tag color="gold" style={{ margin: 0, fontSize: 11 }}>{item.actualReturnDelayed ? '实际 T+1' : '实际'}</Tag>
                     <PriceChange value={item.actualReturn} size="sm" />
                   </div>
                 )}

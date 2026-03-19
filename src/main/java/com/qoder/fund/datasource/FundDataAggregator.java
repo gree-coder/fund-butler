@@ -177,8 +177,21 @@ public class FundDataAggregator {
 
         BigDecimal lastNav = getLatestNav(fundCode);
 
+        // 提前获取基金类型（后续多处使用）
+        String fundType = null;
+        try {
+            Fund fund = fundMapper.selectById(fundCode);
+            if (fund != null) {
+                fundType = fund.getType();
+            }
+        } catch (Exception ignored) {}
+
         // 数据源0: 检查今日实际净值是否已发布
         EstimateSourceDTO.EstimateItem actualItem = buildActualSource(fundCode);
+        // QDII基金净值延迟发布，降级展示最近一个交易日实际涨幅
+        if (actualItem == null && "QDII".equals(fundType)) {
+            actualItem = getLatestActualSource(fundCode);
+        }
         if (actualItem != null) {
             sources.add(actualItem);
         }
@@ -275,15 +288,6 @@ public class FundDataAggregator {
             stockItem.setAvailable(false);
         }
         sources.add(stockItem);
-
-        // 获取基金类型用于智能预估
-        String fundType = null;
-        try {
-            Fund fund = fundMapper.selectById(fundCode);
-            if (fund != null) {
-                fundType = fund.getType();
-            }
-        } catch (Exception ignored) {}
 
         // 数据源5: 智能综合预估 (基于准确度选源，不受实际净值影响)
         EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
@@ -451,6 +455,88 @@ public class FundDataAggregator {
      */
     public EstimateSourceDTO.EstimateItem getActualSource(String fundCode) {
         return buildActualSource(fundCode);
+    }
+
+    /**
+     * 获取最近一个交易日的实际净值（用于QDII等净值延迟发布的基金）
+     * 当今日净值不可用时，返回数据库中最新一条记录
+     */
+    public EstimateSourceDTO.EstimateItem getLatestActualSource(String fundCode) {
+        try {
+            List<FundNav> navs = fundNavMapper.selectList(
+                    new QueryWrapper<FundNav>()
+                            .eq("fund_code", fundCode)
+                            .isNotNull("daily_return")
+                            .orderByDesc("nav_date")
+                            .last("LIMIT 1")
+            );
+            if (navs.isEmpty()) return null;
+
+            FundNav latest = navs.get(0);
+            EstimateSourceDTO.EstimateItem item = new EstimateSourceDTO.EstimateItem();
+            item.setKey("actual");
+            item.setLabel("最新实际净值 (" + latest.getNavDate() + ")");
+            item.setDescription("净值发布存在延迟，展示最近交易日数据");
+            item.setEstimateNav(latest.getNav());
+            item.setEstimateReturn(latest.getDailyReturn());
+            item.setAvailable(true);
+            item.setDelayed(true);
+            return item;
+        } catch (Exception e) {
+            log.warn("获取最近实际净值失败: {}", fundCode, e);
+            return null;
+        }
+    }
+
+    /**
+     * 批量预同步今日净值到数据库
+     * 逐个请求LSJZ API并加延迟，避免高频触发限流导致后续 buildActualSource 全部拿不到数据
+     */
+    public void ensureTodayNavSynced(Collection<String> fundCodes) {
+        LocalDate today = LocalDate.now();
+        DayOfWeek dow = today.getDayOfWeek();
+        if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return;
+
+        String todayStr = today.toString();
+        int synced = 0;
+
+        for (String fundCode : fundCodes) {
+            try {
+                long exists = fundNavMapper.selectCount(
+                        new QueryWrapper<FundNav>()
+                                .eq("fund_code", fundCode)
+                                .eq("nav_date", today));
+                if (exists > 0) continue;
+
+                List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(fundCode, todayStr, todayStr);
+                if (!navList.isEmpty()) {
+                    Map<String, Object> navData = navList.get(0);
+                    String navDate = (String) navData.get("navDate");
+                    if (todayStr.equals(navDate)) {
+                        try {
+                            FundNav fundNav = new FundNav();
+                            fundNav.setFundCode(fundCode);
+                            fundNav.setNavDate(today);
+                            fundNav.setNav((BigDecimal) navData.get("nav"));
+                            fundNav.setAccNav((BigDecimal) navData.get("accNav"));
+                            fundNav.setDailyReturn((BigDecimal) navData.get("dailyReturn"));
+                            fundNavMapper.insert(fundNav);
+                            synced++;
+                        } catch (Exception ignored) {}
+                    }
+                }
+
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.debug("预同步今日净值失败: {}", fundCode, e);
+            }
+        }
+        if (synced > 0) {
+            log.info("预同步今日净值完成, 新增 {} 条", synced);
+        }
     }
 
     /**

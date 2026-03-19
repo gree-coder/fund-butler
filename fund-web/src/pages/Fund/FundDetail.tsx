@@ -249,7 +249,7 @@ const FundDetail: React.FC = () => {
           {actualSource && (
             <div>
               <div className="fund-stat-label">
-                <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>实际</Tag> 今日净值
+                <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{actualSource.delayed ? '实际 T+1' : '实际'}</Tag> {actualSource.delayed ? '最新净值' : '今日净值'}
               </div>
               <div style={{ fontSize: 24, fontWeight: 600, color: getProfitColor(actualSource.estimateReturn), fontVariantNumeric: 'tabular-nums' }}>
                 {formatNav(actualSource.estimateNav)}

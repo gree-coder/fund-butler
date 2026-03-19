@@ -51,6 +51,7 @@ export interface EstimateItem {
   scenario?: string | null;
   weights?: Record<string, number> | null;
   accuracyEnhanced?: boolean;
+  delayed?: boolean;
 }
 
 export interface EstimateSourceData {
