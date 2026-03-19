@@ -27,5 +27,7 @@ public class EstimateSourceDTO {
         private Map<String, BigDecimal> weights;
         /** 是否应用了历史准确度修正 */
         private boolean accuracyEnhanced;
+        /** 是否为延迟数据(如QDII T+1) */
+        private boolean delayed;
     }
 }

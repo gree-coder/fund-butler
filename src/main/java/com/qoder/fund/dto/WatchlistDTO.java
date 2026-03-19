@@ -16,6 +16,8 @@ public class WatchlistDTO {
     private BigDecimal estimateReturn;
     private BigDecimal actualNav;
     private BigDecimal actualReturn;
+    /** 实际涨幅是否为延迟数据(QDII T+1) */
+    private Boolean actualReturnDelayed;
     private Map<String, BigDecimal> performance;
     /** 智能预估涨跌幅 */
     private BigDecimal smartEstimateReturn;

@@ -18,6 +18,8 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -36,8 +38,14 @@ public class PositionService {
             query.eq("account_id", accountId);
         }
         List<Position> positions = positionMapper.selectList(query);
-        List<PositionDTO> result = new ArrayList<>();
 
+        // 批量预同步今日净值（带延迟，避免LSJZ API限流）
+        Set<String> fundCodes = positions.stream()
+                .map(Position::getFundCode)
+                .collect(Collectors.toSet());
+        dataAggregator.ensureTodayNavSynced(fundCodes);
+
+        List<PositionDTO> result = new ArrayList<>();
         for (Position p : positions) {
             result.add(buildPositionDTO(p));
         }
@@ -184,11 +192,49 @@ public class PositionService {
             dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
         }
 
-        // 今日实际净值（如果已发布）
-        EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(p.getFundCode());
-        if (actualSource != null && actualSource.isAvailable()) {
-            dto.setActualNav(actualSource.getEstimateNav());
-            dto.setActualReturn(actualSource.getEstimateReturn());
+        // 主数据源估值为空时，降级到多源智能估值（解决C类份额等天天基金API不支持的情况）
+        if (dto.getEstimateReturn() == null) {
+            try {
+                EstimateSourceDTO estimates = dataAggregator.getMultiSourceEstimates(p.getFundCode());
+                if (estimates != null && estimates.getSources() != null) {
+                    for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                        if ("smart".equals(source.getKey()) && source.isAvailable()) {
+                            dto.setEstimateReturn(source.getEstimateReturn());
+                            dto.setEstimateNav(source.getEstimateNav());
+                            break;
+                        }
+                    }
+                    // 顺便从多源结果中提取实际涨幅，避免重复API调用
+                    for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                        if ("actual".equals(source.getKey()) && source.isAvailable()) {
+                            dto.setActualNav(source.getEstimateNav());
+                            dto.setActualReturn(source.getEstimateReturn());
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("多源智能估值降级失败: {}", p.getFundCode(), e);
+            }
+        }
+
+        // 今日实际净值（如果已发布且尚未从多源结果中获取）
+        if (dto.getActualReturn() == null) {
+            EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(p.getFundCode());
+            if (actualSource != null && actualSource.isAvailable()) {
+                dto.setActualNav(actualSource.getEstimateNav());
+                dto.setActualReturn(actualSource.getEstimateReturn());
+            }
+        }
+
+        // QDII等基金净值延迟发布，降级展示最近一个交易日的实际涨幅
+        if (dto.getActualReturn() == null && "QDII".equals(dto.getFundType())) {
+            EstimateSourceDTO.EstimateItem latestActual = dataAggregator.getLatestActualSource(p.getFundCode());
+            if (latestActual != null && latestActual.isAvailable()) {
+                dto.setActualNav(latestActual.getEstimateNav());
+                dto.setActualReturn(latestActual.getEstimateReturn());
+                dto.setActualReturnDelayed(true);
+            }
         }
 
         return dto;

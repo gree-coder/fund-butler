@@ -20,6 +20,7 @@ export interface PositionItem {
   estimateReturn: number;
   actualNav?: number;
   actualReturn?: number;
+  actualReturnDelayed?: boolean;
   marketValue: number;
   profit: number;
   profitRate: number;

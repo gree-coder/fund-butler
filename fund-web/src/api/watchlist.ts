@@ -9,6 +9,7 @@ export interface WatchlistItem {
   estimateReturn: number;
   actualNav?: number;
   actualReturn?: number;
+  actualReturnDelayed?: boolean;
   performance: { month1: number; month3: number; year1: number };
   smartEstimateReturn?: number | null;
   smartEstimateNav?: number | null;

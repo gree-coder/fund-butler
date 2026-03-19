@@ -61,6 +61,9 @@ public class WatchlistService {
                     if ("actual".equals(source.getKey()) && source.isAvailable()) {
                         dto.setActualNav(source.getEstimateNav());
                         dto.setActualReturn(source.getEstimateReturn());
+                        if (source.isDelayed()) {
+                            dto.setActualReturnDelayed(true);
+                        }
                     }
                     if ("smart".equals(source.getKey()) && source.isAvailable()) {
                         dto.setSmartEstimateReturn(source.getEstimateReturn());

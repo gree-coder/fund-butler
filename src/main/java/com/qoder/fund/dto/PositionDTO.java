@@ -17,6 +17,8 @@ public class PositionDTO {
     private BigDecimal estimateReturn;
     private BigDecimal actualNav;
     private BigDecimal actualReturn;
+    /** 实际涨幅是否为延迟数据(QDII T+1) */
+    private Boolean actualReturnDelayed;
     private BigDecimal marketValue;
     private BigDecimal profit;
     private BigDecimal profitRate;

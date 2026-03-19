@@ -134,7 +134,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   {p.actualReturn != null && (
                     <div style={{ fontSize: 12, marginTop: 1 }}>
-                      <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>实</Tag>
+                      <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>实{p.actualReturnDelayed ? ' T+1' : ''}</Tag>
                       <PriceChange value={p.actualReturn} size="sm" />
                     </div>
                   )}

@@ -323,6 +323,53 @@ public class FundDataSyncScheduler {
     }
 
     /**
+     * 每交易日21:30补充同步净值数据
+     * 针对19:30同步时尚未发布净值的基金进行重试
+     */
+    @Scheduled(cron = "0 30 21 * * MON-FRI")
+    public void retrySyncDailyNav() {
+        if (!isTradingDay(LocalDate.now())) return;
+
+        log.info("开始补充同步每日净值数据...");
+        LocalDate today = LocalDate.now();
+        String todayStr = today.format(DateTimeFormatter.ISO_LOCAL_DATE);
+
+        // 收集所有需要关注的基金代码（持仓+自选+已入库）
+        Set<String> fundCodes = getTrackedFundCodes();
+        List<Fund> allFunds = fundMapper.selectList(null);
+        for (Fund f : allFunds) {
+            fundCodes.add(f.getCode());
+        }
+
+        int count = 0;
+        for (String fundCode : fundCodes) {
+            try {
+                // 跳过已有今日净值的基金
+                long exists = fundNavMapper.selectCount(
+                        new QueryWrapper<FundNav>()
+                                .eq("fund_code", fundCode)
+                                .eq("nav_date", today));
+                if (exists > 0) continue;
+
+                List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(
+                        fundCode, todayStr, todayStr);
+                for (Map<String, Object> navData : navList) {
+                    saveNav(fundCode, navData);
+                    count++;
+                }
+
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("补充同步净值失败: fund={}", fundCode, e);
+            }
+        }
+        log.info("补充净值同步完成, 更新 {} 条记录", count);
+    }
+
+    /**
      * 判断是否为交易日 (简单判断：排除周末)
      */
     public boolean isTradingDay(LocalDate date) {
