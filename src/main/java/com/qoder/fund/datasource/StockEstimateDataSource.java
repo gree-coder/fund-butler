@@ -100,6 +100,8 @@ public class StockEstimateDataSource {
             Map<String, BigDecimal> ratioMap = new HashMap<>();
             int skippedHkStock = 0;
             int skippedOther = 0;
+            BigDecimal totalHoldingsRatio = BigDecimal.ZERO; // 总持仓比例
+            BigDecimal skippedOtherRatio = BigDecimal.ZERO;  // 跳过的非港股通比例
 
             for (Map<String, Object> h : holdings) {
                 String stockCode = String.valueOf(h.get("stockCode"));
@@ -107,6 +109,7 @@ public class StockEstimateDataSource {
                 if (stockCode == null || stockCode.isEmpty() || ratio.compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
                 }
+                totalHoldingsRatio = totalHoldingsRatio.add(ratio);
 
                 String formattedCode = formatStockCode(stockCode);
                 if (formattedCode.isEmpty()) {
@@ -115,8 +118,9 @@ public class StockEstimateDataSource {
                         // 港股但格式化失败（异常情况）
                         log.warn("港股代码格式化失败: code={}, fund={}", stockCode, fundCode);
                     } else {
-                        // 非港股通标的（美股、日股等），记录日志但不频繁输出
+                        // 非港股通标的（美股、日股等），记录跳过比例
                         skippedOther++;
+                        skippedOtherRatio = skippedOtherRatio.add(ratio);
                     }
                     continue;
                 }
@@ -125,7 +129,8 @@ public class StockEstimateDataSource {
             }
 
             if (skippedOther > 0) {
-                log.debug("基金{}包含{}只非港股通持仓(美股/日股等)，已跳过", fundCode, skippedOther);
+                log.debug("基金{}包含{}只非港股通持仓(美股/日股等)，占比{:.2f}%，已跳过",
+                        fundCode, skippedOther, skippedOtherRatio);
             }
 
             if (stockCodes.isEmpty()) {
@@ -159,7 +164,19 @@ public class StockEstimateDataSource {
                 result.put("estimateReturn", estimateReturn);
                 result.put("source", "stock_estimate");
                 result.put("coverageRatio", totalRatio);
-                log.info("股票估值: fund={}, return={}, coverage={}%, holdings={}", fundCode, estimateReturn, totalRatio, holdingsSource);
+                // 有效覆盖率 = 实际获取行情的比例 / (总持仓比例 - 非港股通比例)
+                // 这里 totalRatio 就是可以获取行情的持仓比例
+                // 有效覆盖率相对于总持仓来计算
+                if (totalHoldingsRatio.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal effectiveCoverage = totalRatio.divide(totalHoldingsRatio, 4, RoundingMode.HALF_UP)
+                            .multiply(new BigDecimal("100"));
+                    result.put("effectiveCoverageRatio", effectiveCoverage);
+                    result.put("skippedOtherRatio", skippedOtherRatio);
+                    result.put("skippedOtherCount", skippedOther);
+                }
+                log.info("股票估值: fund={}, return={}, coverage={}%, effectiveCoverage={}%, skippedOther={}只({}%)",
+                        fundCode, estimateReturn, totalRatio,
+                        result.get("effectiveCoverageRatio"), skippedOther, skippedOtherRatio);
 
                 // 记录成功
                 circuitBreaker.recordSuccess(SOURCE_NAME);

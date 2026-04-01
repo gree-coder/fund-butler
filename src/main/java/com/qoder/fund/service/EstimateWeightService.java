@@ -303,8 +303,10 @@ public class EstimateWeightService {
 
         if ("etf_realtime".equals(stockSourceType)) {
             desc.append("基于ETF实时价格的高置信度加权");
-        } else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
-            desc.append("固收类基金加权平均（以机构估值为主）");
+        } else if ("MONEY".equals(fundType)) {
+            desc.append("货币基金估值参考意义有限（日涨幅约0.01%，波动极小）");
+        } else if ("BOND".equals(fundType)) {
+            desc.append("债券基金估值波动较小，机构估值相对可靠");
         } else if ("QDII".equals(fundType)) {
             desc.append("QDII基金加权平均（预估今日海外市场涨跌，T+1晚公布实际值）");
         } else {

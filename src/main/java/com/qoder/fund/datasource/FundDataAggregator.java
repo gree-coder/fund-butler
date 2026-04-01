@@ -80,6 +80,14 @@ public class FundDataAggregator {
                 createEstimateItem(detail));
         }
 
+        // 如果持仓日期为空，尝试从数据库补充
+        if (detail.getHoldingsDate() == null) {
+            Fund fund = fundMapper.selectById(fundCode);
+            if (fund != null && fund.getHoldingsDate() != null) {
+                detail.setHoldingsDate(fund.getHoldingsDate().toString());
+            }
+        }
+
         // 持久化基金基本信息（通过 Service 层）
         persistenceService.saveFundInfo(detail);
 

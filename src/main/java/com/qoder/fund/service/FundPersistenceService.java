@@ -59,6 +59,13 @@ public class FundPersistenceService {
             fund.setTopHoldings(detail.getTopHoldings());
             fund.setAllHoldings(detail.getAllHoldings());
             fund.setIndustryDist(detail.getIndustryDist());
+            if (detail.getHoldingsDate() != null) {
+                try {
+                    fund.setHoldingsDate(LocalDate.parse(detail.getHoldingsDate()));
+                } catch (Exception e) {
+                    log.warn("解析持仓日期失败: {}", detail.getHoldingsDate());
+                }
+            }
             fund.setUpdatedAt(LocalDateTime.now());
 
             if (existing == null) {

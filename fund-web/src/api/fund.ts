@@ -19,6 +19,7 @@ export interface FundDetail {
   topHoldings: { stockCode: string; stockName: string; ratio: number; changePercent?: number; currentPrice?: number; industry?: string }[];
   industryDist: { industry: string; ratio: number }[];
   sectorChanges: { sectorName: string; changePercent: number }[];
+  holdingsDate?: string;
   latestNav: number;
   latestNavDate: string;
   estimateNav: number;

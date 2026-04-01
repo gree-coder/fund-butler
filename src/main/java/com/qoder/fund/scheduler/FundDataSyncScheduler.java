@@ -14,6 +14,7 @@ import com.qoder.fund.mapper.FundMapper;
 import com.qoder.fund.mapper.FundNavMapper;
 import com.qoder.fund.mapper.PositionMapper;
 import com.qoder.fund.mapper.WatchlistMapper;
+import com.qoder.fund.service.TradingCalendarService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -45,6 +45,7 @@ public class FundDataSyncScheduler {
     private final EstimatePredictionMapper estimatePredictionMapper;
     private final EastMoneyDataSource eastMoneyDataSource;
     private final FundDataAggregator fundDataAggregator;
+    private final TradingCalendarService tradingCalendarService;
 
     /**
      * 应用启动时自动补偿缺失的数据
@@ -78,7 +79,7 @@ public class FundDataSyncScheduler {
      */
     private void compensateMissingNav() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
-        while (!isTradingDay(yesterday)) {
+        while (!tradingCalendarService.isTradingDay(yesterday)) {
             yesterday = yesterday.minusDays(1);
         }
 
@@ -222,7 +223,7 @@ public class FundDataSyncScheduler {
      */
     @Scheduled(cron = "0 30 19 * * MON-FRI")
     public void syncDailyNav() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!tradingCalendarService.isTradingDay(LocalDate.now())) return;
 
         log.info("开始同步每日净值数据...");
         List<Fund> funds = fundMapper.selectList(null);
@@ -300,10 +301,16 @@ public class FundDataSyncScheduler {
                     fund.setType(detail.getType());
                     fund.setTopHoldings(detail.getTopHoldings());
                     fund.setIndustryDist(detail.getIndustryDist());
+                    if (detail.getHoldingsDate() != null) {
+                        fund.setHoldingsDate(LocalDate.parse(detail.getHoldingsDate()));
+                    }
                     fundMapper.insert(fund);
                 } else {
                     fund.setTopHoldings(detail.getTopHoldings());
                     fund.setIndustryDist(detail.getIndustryDist());
+                    if (detail.getHoldingsDate() != null) {
+                        fund.setHoldingsDate(LocalDate.parse(detail.getHoldingsDate()));
+                    }
                     fundMapper.updateById(fund);
                 }
                 successCount++;
@@ -328,7 +335,7 @@ public class FundDataSyncScheduler {
      */
     @Scheduled(cron = "0 30 21 * * MON-FRI")
     public void retrySyncDailyNav() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!tradingCalendarService.isTradingDay(LocalDate.now())) return;
 
         log.info("开始补充同步每日净值数据...");
         LocalDate today = LocalDate.now();
@@ -367,14 +374,6 @@ public class FundDataSyncScheduler {
             }
         }
         log.info("补充净值同步完成, 更新 {} 条记录", count);
-    }
-
-    /**
-     * 判断是否为交易日 (简单判断：排除周末)
-     */
-    public boolean isTradingDay(LocalDate date) {
-        DayOfWeek dayOfWeek = date.getDayOfWeek();
-        return dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY;
     }
 
     private void saveNav(String fundCode, Map<String, Object> navData) {
@@ -416,7 +415,7 @@ public class FundDataSyncScheduler {
      */
     @Scheduled(cron = "0 50 14 * * MON-FRI")
     public void snapshotDomesticFundPredictions() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!tradingCalendarService.isTradingDay(LocalDate.now())) return;
 
         log.info("开始快照A股基金估值预测...");
         Set<String> fundCodes = getTrackedFundCodes();
@@ -474,16 +473,24 @@ public class FundDataSyncScheduler {
                 log.warn("快照预测失败: fund={}", fundCode, e);
             }
         }
-        log.info("A股基金估值快照完成, 保存 {} 条记录, 跳过 {} 只QDII基金(等待22:00批次)", count, skipped);
+        log.info("A股基金估值快照完成, 保存 {} 条记录, 跳过 {} 只QDII基金(等待23:00批次)", count, skipped);
     }
 
     /**
-     * 每交易日22:00快照QDII基金估值
-     * 此时美股已开盘，港股已收盘，估值更准确
+     * 每交易日23:00快照QDII基金估值
+     * 美股夏令时21:30开盘，冬令时22:30开盘
+     * 23:00执行确保夏令时/冬令时都已开盘，估值更准确
+     * 港股16:00收盘，此时也已收盘
      */
-    @Scheduled(cron = "0 0 22 * * MON-FRI")
+    @Scheduled(cron = "0 0 23 * * MON-FRI")
     public void snapshotQdiiFundPredictions() {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!tradingCalendarService.isTradingDay(LocalDate.now())) return;
+
+        // 检查美股是否已开盘（美股交易日判断）
+        if (!tradingCalendarService.isUsTradingDay(LocalDate.now())) {
+            log.info("今日非美股交易日，跳过QDII快照");
+            return;
+        }
 
         log.info("开始快照QDII基金估值预测...");
         Set<String> fundCodes = getTrackedFundCodes();
@@ -576,7 +583,7 @@ public class FundDataSyncScheduler {
      * @param batchName 批次名称，用于日志
      */
     private void doEvaluatePredictionAccuracy(String batchName) {
-        if (!isTradingDay(LocalDate.now())) return;
+        if (!tradingCalendarService.isTradingDay(LocalDate.now())) return;
 
         log.info("开始评估预测准确度 [{}]...", batchName);
         LocalDate today = LocalDate.now();

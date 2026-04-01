@@ -22,6 +22,7 @@ public class FundDetailDTO {
     @JsonIgnore
     private List<Map<String, Object>> allHoldings;
     private List<Map<String, Object>> industryDist;
+    private String holdingsDate;
     private BigDecimal latestNav;
     private String latestNavDate;
     private BigDecimal estimateNav;

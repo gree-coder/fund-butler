@@ -272,7 +272,22 @@ const FundDetail: React.FC = () => {
 
       <Row gutter={16}>
         <Col span={12}>
-          <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>十大重仓股</span>} style={{ marginBottom: 16 }}>
+          <Card 
+            className="fund-card-static" 
+            title={
+              <Space>
+                <span style={{ fontWeight: 600 }}>十大重仓股</span>
+                {detail.holdingsDate && (
+                  <Tooltip title={`持仓数据披露日期：${detail.holdingsDate}，季报披露存在滞后性，请注意时效性`}>
+                    <Tag color="orange" style={{ marginLeft: 8, fontWeight: 400 }}>
+                      数据截至 {detail.holdingsDate}
+                    </Tag>
+                  </Tooltip>
+                )}
+              </Space>
+            } 
+            style={{ marginBottom: 16 }}
+          >
             <Table columns={holdingColumns} dataSource={detail.topHoldings || []} pagination={false} rowKey="stockCode" size="small" />
           </Card>
         </Col>
