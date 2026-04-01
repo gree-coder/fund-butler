@@ -74,7 +74,8 @@ public class EstimateWeightService {
     public record WeightResult(
             Map<String, BigDecimal> weights,
             String scenario,
-            boolean accuracyEnhanced
+            boolean accuracyEnhanced,
+            boolean coldStart  // 是否为冷启动（无历史数据）
     ) {}
 
     /**
@@ -123,7 +124,76 @@ public class EstimateWeightService {
                 coverageRatio != null ? coverageRatio.setScale(1, RoundingMode.HALF_UP) : "N/A",
                 scenario);
 
-        return new WeightResult(weights, scenario, false);
+        return new WeightResult(weights, scenario, false, false);
+    }
+
+    /**
+     * 确定新基金的保守权重（冷启动保护）
+     * 新基金前5个交易日使用单一可靠源，不展示智能综合
+     *
+     * @param fundType       基金类型
+     * @param stockSourceType 股票数据源类型
+     * @return 保守权重结果
+     */
+    public WeightResult determineConservativeWeights(String fundType, String stockSourceType) {
+        Map<String, BigDecimal> weights;
+        String scenario;
+
+        // ETF基金：使用ETF实时价格（如果有）
+        if ("etf_realtime".equals(stockSourceType)) {
+            weights = Map.of(
+                    "eastmoney", new BigDecimal("0.10"),
+                    "sina", new BigDecimal("0.05"),
+                    "tencent", new BigDecimal("0.05"),
+                    "stock", new BigDecimal("0.80")
+            );
+            scenario = "ETF实时(新基金)";
+        } else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
+            // 固收类：以天天基金为主
+            weights = Map.of(
+                    "eastmoney", new BigDecimal("0.70"),
+                    "sina", new BigDecimal("0.15"),
+                    "tencent", new BigDecimal("0.15"),
+                    "stock", new BigDecimal("0.00")
+            );
+            scenario = "固收类(新基金)";
+        } else if ("QDII".equals(fundType)) {
+            // QDII：以机构估值为主，不信任股票估算
+            weights = Map.of(
+                    "eastmoney", new BigDecimal("0.50"),
+                    "sina", new BigDecimal("0.25"),
+                    "tencent", new BigDecimal("0.25"),
+                    "stock", new BigDecimal("0.00")
+            );
+            scenario = "QDII(新基金)";
+        } else {
+            // 权益类：以天天基金为主，降低股票权重
+            weights = Map.of(
+                    "eastmoney", new BigDecimal("0.60"),
+                    "sina", new BigDecimal("0.20"),
+                    "tencent", new BigDecimal("0.20"),
+                    "stock", new BigDecimal("0.00")
+            );
+            scenario = "权益类(新基金)";
+        }
+
+        log.info("新基金保守权重: type={}, stockSource={}, 场景={}", fundType, stockSourceType, scenario);
+        return new WeightResult(weights, scenario, false, true);
+    }
+
+    /**
+     * 检查基金是否有足够的历史数据用于准确度修正
+     *
+     * @param fundCode 基金代码
+     * @return 是否有至少3天的历史数据
+     */
+    public boolean hasEnoughHistoryData(String fundCode) {
+        long count = estimatePredictionMapper.selectCount(
+                new QueryWrapper<EstimatePrediction>()
+                        .eq("fund_code", fundCode)
+                        .isNotNull("actual_return")
+        );
+        return count >= 3;
     }
 
     /**
@@ -136,11 +206,12 @@ public class EstimateWeightService {
      */
     public WeightResult applyAccuracyCorrection(String fundCode,
                                                  Map<String, BigDecimal> baseWeights,
-                                                 Set<String> availableSources) {
+                                                 Set<String> availableSources,
+                                                 boolean isColdStart) {
         try {
             Map<String, BigDecimal> multipliers = calculateAccuracyMultipliers(fundCode, availableSources);
             if (multipliers == null || multipliers.size() < 2) {
-                return new WeightResult(baseWeights, null, false);
+                return new WeightResult(baseWeights, null, false, isColdStart);
             }
 
             Map<String, BigDecimal> finalWeights = new LinkedHashMap<>();
@@ -151,10 +222,10 @@ public class EstimateWeightService {
             }
 
             log.info("基金{}应用准确度修正, 修正因子: {}", fundCode, multipliers);
-            return new WeightResult(finalWeights, null, true);
+            return new WeightResult(finalWeights, null, true, isColdStart);
         } catch (Exception e) {
             log.warn("准确度修正计算失败: {}", fundCode, e);
-            return new WeightResult(baseWeights, null, false);
+            return new WeightResult(baseWeights, null, false, isColdStart);
         }
     }
 
@@ -235,7 +306,7 @@ public class EstimateWeightService {
         } else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
             desc.append("固收类基金加权平均（以机构估值为主）");
         } else if ("QDII".equals(fundType)) {
-            desc.append("QDII基金加权平均（海外持仓估算可靠性低）");
+            desc.append("QDII基金加权平均（预估今日海外市场涨跌，T+1晚公布实际值）");
         } else {
             BigDecimal cov = coverageRatio != null ? coverageRatio : BigDecimal.ZERO;
             String covStr = cov.setScale(0, RoundingMode.HALF_UP).toPlainString();

@@ -266,6 +266,7 @@ public class PositionService {
                 dto.setActualNav(latestActual.getEstimateNav());
                 dto.setActualReturn(latestActual.getEstimateReturn());
                 dto.setActualReturnDelayed(true);
+                dto.setActualNavDate(latestActual.getDelayedDate());  // 设置延迟数据的日期
             }
         }
 
@@ -359,6 +360,7 @@ public class PositionService {
                 dto.setActualNav(latestActual.getEstimateNav());
                 dto.setActualReturn(latestActual.getEstimateReturn());
                 dto.setActualReturnDelayed(true);
+                dto.setActualNavDate(latestActual.getDelayedDate());  // 设置延迟数据的日期
             }
         }
 
@@ -450,6 +452,7 @@ public class PositionService {
                             dto.setActualNav(source.getEstimateNav());
                             dto.setActualReturn(source.getEstimateReturn());
                             dto.setActualReturnDelayed(true);
+                            dto.setActualNavDate(source.getDelayedDate());  // 设置延迟数据的日期
                         });
             }
         }

@@ -95,9 +95,12 @@ public class StockEstimateDataSource {
                 return result;
             }
 
-            // 2. 提取股票代码 (仅A股，跳过港股等非A股)
+            // 2. 提取股票代码 (A股+港股，跳过美股等非港股通标的)
             List<String> stockCodes = new ArrayList<>();
             Map<String, BigDecimal> ratioMap = new HashMap<>();
+            int skippedHkStock = 0;
+            int skippedOther = 0;
+
             for (Map<String, Object> h : holdings) {
                 String stockCode = String.valueOf(h.get("stockCode"));
                 BigDecimal ratio = toBigDecimal(h.get("ratio"));
@@ -107,11 +110,22 @@ public class StockEstimateDataSource {
 
                 String formattedCode = formatStockCode(stockCode);
                 if (formattedCode.isEmpty()) {
-                    log.debug("跳过非A股: code={}, fund={}", stockCode, fundCode);
+                    // 区分是港股还是其他市场（如美股）
+                    if (isHongKongStock(stockCode)) {
+                        // 港股但格式化失败（异常情况）
+                        log.warn("港股代码格式化失败: code={}, fund={}", stockCode, fundCode);
+                    } else {
+                        // 非港股通标的（美股、日股等），记录日志但不频繁输出
+                        skippedOther++;
+                    }
                     continue;
                 }
                 stockCodes.add(formattedCode);
                 ratioMap.put(formattedCode, ratio);
+            }
+
+            if (skippedOther > 0) {
+                log.debug("基金{}包含{}只非港股通持仓(美股/日股等)，已跳过", fundCode, skippedOther);
             }
 
             if (stockCodes.isEmpty()) {
@@ -300,7 +314,7 @@ public class StockEstimateDataSource {
      * 沪A: 1.600519 (6开头, 6位数字)
      * 深A: 0.300170 (0/3开头, 6位数字)
      * 科创板: 1.688xxx (6开头, 6位数字)
-     * 港股: 116.00700 (4-5位数字)
+     * 港股: 支持港股通格式
      */
     private String formatStockCode(String code) {
         if (code == null) return "";
@@ -320,12 +334,30 @@ public class StockEstimateDataSource {
             if (code.startsWith("0") || code.startsWith("3")) return "0." + code;  // 深市
         }
 
-        // 港股: 4-5位数字 (如 00700, 09988, 01179, 3690)
+        // 港股: 4-5位数字，东财港股格式为 116.xxx
+        // 港股通标的包括腾讯(00700)、阿里(09988)、美团(03690)等
         if (code.length() == 4 || code.length() == 5) {
+            // 港股代码以0开头的是主板，以6/8开头的是创业板/ gem
+            // 常见港股: 00700(腾讯), 09988(阿里), 03690(美团), 01898(中芯), 01179(华住)
             return "116." + code;
         }
 
         return "";
+    }
+
+    /**
+     * 判断是否为港股代码
+     * 港股为4-5位数字，且不在A股范围内
+     */
+    private boolean isHongKongStock(String code) {
+        if (code == null) return false;
+        code = code.trim();
+        if (code.startsWith("HK")) {
+            code = code.substring(2);
+        }
+        if (!code.matches("\\d+")) return false;
+        // 港股为4-5位，A股为6位
+        return code.length() == 4 || code.length() == 5;
     }
 
     private BigDecimal toBigDecimal(Object value) {

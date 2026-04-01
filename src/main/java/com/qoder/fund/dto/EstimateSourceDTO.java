@@ -3,6 +3,7 @@ package com.qoder.fund.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -29,5 +30,7 @@ public class EstimateSourceDTO {
         private boolean accuracyEnhanced;
         /** 是否为延迟数据(如QDII T+1) */
         private boolean delayed;
+        /** 延迟数据对应的净值日期 */
+        private LocalDate delayedDate;
     }
 }

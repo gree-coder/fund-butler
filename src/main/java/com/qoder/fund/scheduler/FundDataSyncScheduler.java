@@ -472,14 +472,40 @@ public class FundDataSyncScheduler {
     }
 
     /**
-     * 每交易日20:00评估预测准确度
-     * 在 syncDailyNav (19:30) 之后执行，此时实际净值已入库
+     * 每交易日20:00评估预测准确度（第一批）
+     * 主要评估普通A股基金，此时大部分净值已公布
      */
     @Scheduled(cron = "0 0 20 * * MON-FRI")
-    public void evaluatePredictionAccuracy() {
+    public void evaluatePredictionAccuracyBatch1() {
+        doEvaluatePredictionAccuracy("20:00批次");
+    }
+
+    /**
+     * 每交易日21:00评估预测准确度（第二批）
+     * 评估港股基金和部分延迟公布的QDII
+     */
+    @Scheduled(cron = "0 0 21 * * MON-FRI")
+    public void evaluatePredictionAccuracyBatch2() {
+        doEvaluatePredictionAccuracy("21:00批次");
+    }
+
+    /**
+     * 每交易日22:00评估预测准确度（第三批）
+     * 评估大部分QDII基金（T+1净值通常在21:00-22:00公布）
+     */
+    @Scheduled(cron = "0 0 22 * * MON-FRI")
+    public void evaluatePredictionAccuracyBatch3() {
+        doEvaluatePredictionAccuracy("22:00批次");
+    }
+
+    /**
+     * 执行预测准确度评估
+     * @param batchName 批次名称，用于日志
+     */
+    private void doEvaluatePredictionAccuracy(String batchName) {
         if (!isTradingDay(LocalDate.now())) return;
 
-        log.info("开始评估预测准确度...");
+        log.info("开始评估预测准确度 [{}]...", batchName);
         LocalDate today = LocalDate.now();
 
         // 查询今日所有未评估的预测记录
@@ -490,11 +516,12 @@ public class FundDataSyncScheduler {
         );
 
         if (pendingPredictions.isEmpty()) {
-            log.info("无待评估的预测记录");
+            log.info("[{}] 无待评估的预测记录", batchName);
             return;
         }
 
         int evaluated = 0;
+        int skipped = 0;
         for (EstimatePrediction prediction : pendingPredictions) {
             try {
                 // 查询该基金今日的实际净值
@@ -504,7 +531,10 @@ public class FundDataSyncScheduler {
                                 .eq("nav_date", today)
                                 .last("LIMIT 1")
                 );
-                if (navs.isEmpty()) continue;
+                if (navs.isEmpty()) {
+                    skipped++;
+                    continue;
+                }
 
                 FundNav actualNav = navs.get(0);
                 prediction.setActualNav(actualNav.getNav());
@@ -524,7 +554,8 @@ public class FundDataSyncScheduler {
                 log.warn("评估预测准确度失败: id={}, fund={}", prediction.getId(), prediction.getFundCode(), e);
             }
         }
-        log.info("预测准确度评估完成, 评估 {} 条记录", evaluated);
+        log.info("[{}] 预测准确度评估完成, 评估 {} 条记录, 跳过 {} 条(净值未公布)",
+                batchName, evaluated, skipped);
     }
 
     /**

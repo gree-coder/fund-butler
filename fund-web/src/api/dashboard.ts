@@ -21,6 +21,7 @@ export interface PositionItem {
   actualNav?: number;
   actualReturn?: number;
   actualReturnDelayed?: boolean;
+  actualNavDate?: string;  // 实际涨幅对应的净值日期(QDII延迟时显示)
   marketValue: number;
   profit: number;
   profitRate: number;

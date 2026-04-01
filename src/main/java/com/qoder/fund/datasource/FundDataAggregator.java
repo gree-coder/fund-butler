@@ -10,6 +10,7 @@ import com.qoder.fund.entity.FundNav;
 import com.qoder.fund.mapper.EstimatePredictionMapper;
 import com.qoder.fund.mapper.FundMapper;
 import com.qoder.fund.mapper.FundNavMapper;
+import com.qoder.fund.service.EstimateWeightService;
 import com.qoder.fund.service.FundEstimateCalculator;
 import com.qoder.fund.service.FundPersistenceService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -51,6 +52,7 @@ public class FundDataAggregator {
     private final CacheManager cacheManager;
     private final FundPersistenceService persistenceService;
     private final FundEstimateCalculator estimateCalculator;
+    private final EstimateWeightService estimateWeightService;
 
     /**
      * 搜索基金(带缓存)
@@ -431,6 +433,7 @@ public class FundDataAggregator {
             item.setEstimateReturn(latest.getDailyReturn());
             item.setAvailable(true);
             item.setDelayed(true);
+            item.setDelayedDate(latest.getNavDate());  // 设置延迟数据对应的日期
             return item;
         } catch (Exception e) {
             log.warn("获取最近实际净值失败: {}", fundCode, e);
@@ -514,30 +517,43 @@ public class FundDataAggregator {
             return;
         }
 
-        // Step 1: 基于基金类型确定基础权重
-        AdaptiveWeightResult weightResult = determineAdaptiveWeights(fundCode, fundType, stockSourceType, coverageRatio);
-        Map<String, BigDecimal> baseWeights = weightResult.weights;
+        // Step 1: 检查是否为冷启动（新基金无历史数据）
+        boolean isColdStart = !estimateWeightService.hasEnoughHistoryData(fundCode);
 
-        // Step 2: 尝试用历史准确度数据修正基础权重
+        // Step 2: 确定基础权重（冷启动使用保守权重）
+        EstimateWeightService.WeightResult weightResult;
+        if (isColdStart) {
+            weightResult = estimateWeightService.determineConservativeWeights(fundType, stockSourceType);
+        } else {
+            weightResult = estimateWeightService.determineAdaptiveWeights(fundType, stockSourceType, coverageRatio);
+        }
+        Map<String, BigDecimal> baseWeights = weightResult.weights();
+
+        // Step 3: 尝试用历史准确度数据修正基础权重（冷启动跳过）
         Map<String, BigDecimal> finalWeights;
         boolean accuracyEnhanced = false;
-        try {
-            Map<String, BigDecimal> multipliers = calculateAccuracyMultipliers(fundCode, availableSources.keySet());
-            if (multipliers != null && multipliers.size() >= 2) {
-                finalWeights = new LinkedHashMap<>();
-                for (String key : availableSources.keySet()) {
-                    BigDecimal bw = baseWeights.getOrDefault(key, new BigDecimal("0.25"));
-                    BigDecimal multiplier = multipliers.getOrDefault(key, BigDecimal.ONE);
-                    finalWeights.put(key, bw.multiply(multiplier));
+        if (!isColdStart) {
+            try {
+                Map<String, BigDecimal> multipliers = calculateAccuracyMultipliers(fundCode, availableSources.keySet());
+                if (multipliers != null && multipliers.size() >= 2) {
+                    finalWeights = new LinkedHashMap<>();
+                    for (String key : availableSources.keySet()) {
+                        BigDecimal bw = baseWeights.getOrDefault(key, new BigDecimal("0.25"));
+                        BigDecimal multiplier = multipliers.getOrDefault(key, BigDecimal.ONE);
+                        finalWeights.put(key, bw.multiply(multiplier));
+                    }
+                    accuracyEnhanced = true;
+                    log.info("基金{}应用准确度修正, 修正因子: {}", fundCode, multipliers);
+                } else {
+                    finalWeights = baseWeights;
                 }
-                accuracyEnhanced = true;
-                log.info("基金{}应用准确度修正, 修正因子: {}", fundCode, multipliers);
-            } else {
+            } catch (Exception e) {
+                log.warn("准确度修正计算失败，使用基础权重: {}", fundCode, e);
                 finalWeights = baseWeights;
             }
-        } catch (Exception e) {
-            log.warn("准确度修正计算失败，使用基础权重: {}", fundCode, e);
+        } else {
             finalWeights = baseWeights;
+            log.info("基金{}处于冷启动期，使用保守权重，不应用准确度修正", fundCode);
         }
 
         // Step 3: 加权计算
@@ -555,9 +571,9 @@ public class FundDataAggregator {
         smartItem.setEstimateNav(weightedNav.divide(totalWeight, 4, RoundingMode.HALF_UP));
         smartItem.setEstimateReturn(weightedReturn.divide(totalWeight, 2, RoundingMode.HALF_UP));
         smartItem.setAvailable(true);
-        smartItem.setDescription(buildAdaptiveDescription(fundType, stockSourceType, coverageRatio));
+        smartItem.setDescription(buildAdaptiveDescription(fundType, stockSourceType, coverageRatio, isColdStart));
         smartItem.setStrategyType("adaptive");
-        smartItem.setScenario(weightResult.scenario);
+        smartItem.setScenario(weightResult.scenario());
         smartItem.setAccuracyEnhanced(accuracyEnhanced);
 
         // 计算归一化权重（仅包含实际参与计算的源）
@@ -570,103 +586,28 @@ public class FundDataAggregator {
     }
 
     /**
-     * 根据基金类型、stock源类型、覆盖率确定自适应权重
-     */
-    private AdaptiveWeightResult determineAdaptiveWeights(String fundCode, String fundType,
-                                                           String stockSourceType, BigDecimal coverageRatio) {
-        Map<String, BigDecimal> weights = new LinkedHashMap<>();
-        String scenario;
-
-        // 场景A: ETF实时价格 — 极高精度
-        if ("etf_realtime".equals(stockSourceType)) {
-            weights.put("eastmoney", new BigDecimal("0.15"));
-            weights.put("sina", new BigDecimal("0.08"));
-            weights.put("tencent", new BigDecimal("0.07"));
-            weights.put("stock", new BigDecimal("0.70"));
-            scenario = "ETF实时";
-        }
-        // 场景B: 债券/货币基金 — 股票仓位极低
-        else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
-            weights.put("eastmoney", new BigDecimal("0.45"));
-            weights.put("sina", new BigDecimal("0.25"));
-            weights.put("tencent", new BigDecimal("0.25"));
-            weights.put("stock", new BigDecimal("0.05"));
-            scenario = "固收类";
-        }
-        // 场景C: QDII — 海外持仓获取不完整
-        else if ("QDII".equals(fundType)) {
-            weights.put("eastmoney", new BigDecimal("0.40"));
-            weights.put("sina", new BigDecimal("0.25"));
-            weights.put("tencent", new BigDecimal("0.25"));
-            weights.put("stock", new BigDecimal("0.10"));
-            scenario = "QDII";
-        }
-        // 权益类: 根据覆盖率分档
-        else {
-            BigDecimal cov = coverageRatio != null ? coverageRatio : BigDecimal.ZERO;
-            if (cov.compareTo(new BigDecimal("60")) >= 0) {
-                // 场景D: 高覆盖率 ≥60%
-                weights.put("eastmoney", new BigDecimal("0.30"));
-                weights.put("sina", new BigDecimal("0.18"));
-                weights.put("tencent", new BigDecimal("0.17"));
-                weights.put("stock", new BigDecimal("0.35"));
-                scenario = "权益高覆盖";
-            } else if (cov.compareTo(new BigDecimal("30")) >= 0) {
-                // 场景E: 中覆盖率 30%-60%
-                weights.put("eastmoney", new BigDecimal("0.38"));
-                weights.put("sina", new BigDecimal("0.24"));
-                weights.put("tencent", new BigDecimal("0.23"));
-                weights.put("stock", new BigDecimal("0.15"));
-                scenario = "权益中覆盖";
-            } else {
-                // 场景F: 低覆盖率 <30% (含ETF联接基金)
-                weights.put("eastmoney", new BigDecimal("0.43"));
-                weights.put("sina", new BigDecimal("0.26"));
-                weights.put("tencent", new BigDecimal("0.26"));
-                weights.put("stock", new BigDecimal("0.05"));
-                scenario = "权益低覆盖";
-            }
-        }
-
-        log.info("基金{}自适应权重: type={}, stockSource={}, coverage={}%, 场景={}",
-                fundCode, fundType, stockSourceType,
-                coverageRatio != null ? coverageRatio.setScale(1, RoundingMode.HALF_UP) : "N/A",
-                scenario);
-        return new AdaptiveWeightResult(weights, scenario);
-    }
-
-    /**
      * 生成自适应权重的描述文案
      */
-    private String buildAdaptiveDescription(String fundType, String stockSourceType, BigDecimal coverageRatio) {
+    private String buildAdaptiveDescription(String fundType, String stockSourceType,
+                                             BigDecimal coverageRatio, boolean isColdStart) {
+        String prefix = isColdStart ? "【新基金】" : "";
         if ("etf_realtime".equals(stockSourceType)) {
-            return "基于ETF实时价格的高置信度加权";
+            return prefix + "基于ETF实时价格的高置信度加权";
         }
         if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
-            return "固收类基金加权平均（以机构估值为主）";
+            return prefix + "固收类基金加权平均（以机构估值为主）";
         }
         if ("QDII".equals(fundType)) {
-            return "QDII基金加权平均（海外持仓估算可靠性低）";
+            return prefix + "QDII基金加权平均（海外持仓估算可靠性低）";
         }
         BigDecimal cov = coverageRatio != null ? coverageRatio : BigDecimal.ZERO;
         String covStr = cov.setScale(0, RoundingMode.HALF_UP).toPlainString();
         if (cov.compareTo(new BigDecimal("60")) >= 0) {
-            return "多源加权平均（重仓股覆盖率" + covStr + "%，权重35%）";
+            return prefix + "多源加权平均（重仓股覆盖率" + covStr + "%，权重35%）";
         } else if (cov.compareTo(new BigDecimal("30")) >= 0) {
-            return "多源加权平均（重仓股覆盖率" + covStr + "%，权重降至15%）";
+            return prefix + "多源加权平均（重仓股覆盖率" + covStr + "%，权重降至15%）";
         } else {
-            return "多源加权平均（重仓股覆盖率仅" + covStr + "%，权重降至5%）";
-        }
-    }
-
-    /** 自适应权重计算结果 */
-    private static class AdaptiveWeightResult {
-        final Map<String, BigDecimal> weights;
-        final String scenario;
-
-        AdaptiveWeightResult(Map<String, BigDecimal> weights, String scenario) {
-            this.weights = weights;
-            this.scenario = scenario;
+            return prefix + "多源加权平均（重仓股覆盖率仅" + covStr + "%，权重降至5%）";
         }
     }
 
