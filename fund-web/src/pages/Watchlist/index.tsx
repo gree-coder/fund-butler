@@ -3,7 +3,7 @@ import { Card, Tabs, Button, Popconfirm, Empty, message, Tag, Popover } from 'an
 import { StarFilled, DeleteOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { watchlistApi, type WatchlistItem } from '../../api/watchlist';
-import { formatNav, formatPercent, getProfitColor } from '../../utils/format';
+import { formatNav } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
 import PageSkeleton from '../../components/PageSkeleton';
 
@@ -81,17 +81,22 @@ const Watchlist: React.FC = () => {
   const navigate = useNavigate();
 
   const loadData = (group?: string) => {
-    setLoading(true);
+    let mounted = true;
     watchlistApi.list(group && group !== '全部' ? group : undefined)
       .then((res) => {
+        if (!mounted) return;
         setItems(res.list || []);
         setGroups(res.groups || []);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const cleanup = loadData();
+    return cleanup;
+  }, []);
 
   const handleRemove = async (id: number) => {
     try {

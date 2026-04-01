@@ -1,8 +1,8 @@
 package com.qoder.fund.datasource;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qoder.fund.config.CircuitBreaker;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -25,11 +25,15 @@ import java.util.regex.Pattern;
 @Component
 public class EastMoneyDataSource implements FundDataSource {
 
+    private static final String SOURCE_NAME = "eastmoney";
+
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final CircuitBreaker circuitBreaker;
 
-    public EastMoneyDataSource(ObjectMapper objectMapper) {
+    public EastMoneyDataSource(ObjectMapper objectMapper, CircuitBreaker circuitBreaker) {
         this.objectMapper = objectMapper;
+        this.circuitBreaker = circuitBreaker;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
@@ -43,12 +47,21 @@ public class EastMoneyDataSource implements FundDataSource {
 
     @Override
     public List<FundSearchDTO> searchFund(String keyword) {
+        // 熔断检查
+        if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+            log.warn("熔断器开启，跳过搜索请求: {}", keyword);
+            return Collections.emptyList();
+        }
+
         try {
             // 天天基金搜索接口
             String url = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
                     + "?callback=&m=1&key=" + keyword;
             String body = httpGet(url);
-            if (body == null || body.isEmpty()) return Collections.emptyList();
+            if (body == null || body.isEmpty()) {
+                circuitBreaker.recordFailure(SOURCE_NAME);
+                return Collections.emptyList();
+            }
 
             JsonNode root = objectMapper.readTree(body);
             JsonNode datas = root.path("Datas");

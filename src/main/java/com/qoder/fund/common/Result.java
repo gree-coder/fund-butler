@@ -3,7 +3,7 @@ package com.qoder.fund.common;
 import lombok.Data;
 
 @Data
-public class Result<T> {
+public final class Result<T> {
 
     private int code;
     private String message;

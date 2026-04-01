@@ -10,6 +10,8 @@ import com.qoder.fund.entity.FundNav;
 import com.qoder.fund.mapper.EstimatePredictionMapper;
 import com.qoder.fund.mapper.FundMapper;
 import com.qoder.fund.mapper.FundNavMapper;
+import com.qoder.fund.service.FundEstimateCalculator;
+import com.qoder.fund.service.FundPersistenceService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +24,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 多数据源聚合器
@@ -41,6 +49,8 @@ public class FundDataAggregator {
     private final FundNavMapper fundNavMapper;
     private final EstimatePredictionMapper estimatePredictionMapper;
     private final CacheManager cacheManager;
+    private final FundPersistenceService persistenceService;
+    private final FundEstimateCalculator estimateCalculator;
 
     /**
      * 搜索基金(带缓存)
@@ -63,11 +73,13 @@ public class FundDataAggregator {
 
         // 如果估值为空，尝试股票兜底
         if (detail.getEstimateReturn() == null || detail.getEstimateReturn().compareTo(BigDecimal.ZERO) == 0) {
-            tryStockEstimate(fundCode, detail);
+            BigDecimal lastNav = getLatestNav(fundCode);
+            estimateCalculator.tryStockEstimate(fundCode, lastNav, 
+                createEstimateItem(detail));
         }
 
-        // 持久化基金基本信息
-        saveFundInfo(detail);
+        // 持久化基金基本信息（通过 Service 层）
+        persistenceService.saveFundInfo(detail);
 
         return detail;
     }
@@ -178,13 +190,7 @@ public class FundDataAggregator {
         BigDecimal lastNav = getLatestNav(fundCode);
 
         // 提前获取基金类型（后续多处使用）
-        String fundType = null;
-        try {
-            Fund fund = fundMapper.selectById(fundCode);
-            if (fund != null) {
-                fundType = fund.getType();
-            }
-        } catch (Exception ignored) {}
+        String fundType = persistenceService.getFundType(fundCode);
 
         // 数据源0: 检查今日实际净值是否已发布
         EstimateSourceDTO.EstimateItem actualItem = buildActualSource(fundCode);
@@ -314,70 +320,14 @@ public class FundDataAggregator {
         }
     }
 
-    private void tryStockEstimate(String fundCode, FundDetailDTO detail) {
-        try {
-            BigDecimal lastNav = detail.getLatestNav();
-            if (lastNav == null || lastNav.compareTo(BigDecimal.ZERO) == 0) {
-                lastNav = getLatestNav(fundCode);
-            }
-            if (lastNav != null && lastNav.compareTo(BigDecimal.ZERO) > 0) {
-                Map<String, Object> stockEstimate = stockEstimateDataSource.estimateByStocks(fundCode, lastNav);
-                if (!stockEstimate.isEmpty()) {
-                    detail.setEstimateNav((BigDecimal) stockEstimate.get("estimateNav"));
-                    detail.setEstimateReturn((BigDecimal) stockEstimate.get("estimateReturn"));
-                    detail.setEstimateSource("基于重仓股实时行情加权估算");
-                }
-            }
-        } catch (Exception e) {
-            log.warn("股票兜底估值失败: {}", fundCode, e);
-        }
-    }
-
     /**
-     * 将外部获取的基金信息持久化到数据库
+     * 创建估值项辅助对象
      */
-    private void saveFundInfo(FundDetailDTO detail) {
-        try {
-            Fund fund = fundMapper.selectById(detail.getCode());
-            if (fund == null) {
-                fund = new Fund();
-                fund.setCode(detail.getCode());
-            }
-            fund.setName(detail.getName());
-            fund.setType(detail.getType());
-            fund.setCompany(detail.getCompany());
-            fund.setManager(detail.getManager());
-            fund.setScale(detail.getScale());
-            fund.setRiskLevel(detail.getRiskLevel());
-            fund.setFeeRate(detail.getFeeRate());
-            fund.setTopHoldings(detail.getTopHoldings());
-            fund.setIndustryDist(detail.getIndustryDist());
-
-            // 获取完整持仓（年报/半年报）
-            try {
-                List<Map<String, Object>> allHoldings = eastMoneyDataSource.fetchAllHoldings(detail.getCode());
-                if (allHoldings != null && !allHoldings.isEmpty()) {
-                    fund.setAllHoldings(allHoldings);
-                    detail.setAllHoldings(allHoldings);
-                }
-            } catch (Exception e) {
-                log.warn("获取完整持仓失败: {}", detail.getCode(), e);
-            }
-
-            if (detail.getEstablishDate() != null) {
-                try {
-                    fund.setEstablishDate(java.time.LocalDate.parse(detail.getEstablishDate()));
-                } catch (Exception ignored) {}
-            }
-
-            if (fundMapper.selectById(detail.getCode()) == null) {
-                fundMapper.insert(fund);
-            } else {
-                fundMapper.updateById(fund);
-            }
-        } catch (Exception e) {
-            log.warn("保存基金信息失败: {}", detail.getCode(), e);
-        }
+    private EstimateSourceDTO.EstimateItem createEstimateItem(FundDetailDTO detail) {
+        EstimateSourceDTO.EstimateItem item = new EstimateSourceDTO.EstimateItem();
+        item.setEstimateNav(detail.getEstimateNav());
+        item.setEstimateReturn(detail.getEstimateReturn());
+        return item;
     }
 
     /**

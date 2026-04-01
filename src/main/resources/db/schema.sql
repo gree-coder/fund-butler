@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS position (
     fund_code       VARCHAR(10)   NOT NULL COMMENT '基金代码',
     shares          DECIMAL(14,2) NOT NULL DEFAULT 0 COMMENT '持有份额',
     cost_amount     DECIMAL(14,2) NOT NULL DEFAULT 0 COMMENT '持仓成本(元)',
+    version         INT           DEFAULT 0 COMMENT '乐观锁版本号',
     created_at      DATETIME      DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_fund_code (fund_code),

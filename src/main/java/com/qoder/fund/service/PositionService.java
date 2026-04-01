@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,15 +40,53 @@ public class PositionService {
         }
         List<Position> positions = positionMapper.selectList(query);
 
-        // 批量预同步今日净值（带延迟，避免LSJZ API限流）
+        if (positions.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 批量获取关联数据，避免 N+1 查询
         Set<String> fundCodes = positions.stream()
                 .map(Position::getFundCode)
                 .collect(Collectors.toSet());
+        Set<Long> accountIds = positions.stream()
+                .map(Position::getAccountId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+
+        // 批量查询基金信息
+        Map<String, Fund> fundMap = fundCodes.isEmpty() ? new HashMap<>() :
+                fundMapper.selectBatchIds(fundCodes).stream()
+                        .collect(Collectors.toMap(Fund::getCode, f -> f));
+
+        // 批量查询账户信息
+        Map<Long, Account> accountMap = accountIds.isEmpty() ? new HashMap<>() :
+                accountMapper.selectBatchIds(accountIds).stream()
+                        .collect(Collectors.toMap(Account::getId, a -> a));
+
+        // 批量预同步今日净值（带延迟，避免LSJZ API限流）
         dataAggregator.ensureTodayNavSynced(fundCodes);
+
+        // 批量查询最新净值和估值
+        Map<String, BigDecimal> latestNavMap = new HashMap<>();
+        Map<String, Map<String, Object>> estimateMap = new HashMap<>();
+        for (String fundCode : fundCodes) {
+            try {
+                BigDecimal nav = dataAggregator.getLatestNav(fundCode);
+                if (nav != null) {
+                    latestNavMap.put(fundCode, nav);
+                }
+                Map<String, Object> estimate = dataAggregator.getEstimateNav(fundCode);
+                if (estimate != null && !estimate.isEmpty()) {
+                    estimateMap.put(fundCode, estimate);
+                }
+            } catch (Exception e) {
+                log.warn("批量获取净值失败: {}", fundCode, e);
+            }
+        }
 
         List<PositionDTO> result = new ArrayList<>();
         for (Position p : positions) {
-            result.add(buildPositionDTO(p));
+            result.add(buildPositionDTOOptimized(p, fundMap, accountMap, latestNavMap, estimateMap));
         }
         return result;
     }
@@ -129,11 +168,17 @@ public class PositionService {
                 position.setCostAmount(position.getCostAmount().add(req.getAmount()));
             }
             case "SELL" -> {
+                // 检查份额是否足够
+                if (position.getShares().compareTo(req.getShares()) < 0) {
+                    throw new IllegalArgumentException("卖出份额不能大于持仓份额");
+                }
+                // 使用加权平均成本计算卖出成本
+                BigDecimal avgCost = position.getCostAmount().divide(position.getShares(), 4, RoundingMode.HALF_UP);
+                BigDecimal sellCost = req.getShares().multiply(avgCost);
                 position.setShares(position.getShares().subtract(req.getShares()));
-                BigDecimal sellCost = req.getShares().multiply(
-                        position.getCostAmount().divide(position.getShares().add(req.getShares()), 4, RoundingMode.HALF_UP));
                 position.setCostAmount(position.getCostAmount().subtract(sellCost));
             }
+            default -> throw new IllegalArgumentException("Invalid transaction type: " + req.getType());
         }
         positionMapper.updateById(position);
     }
@@ -228,6 +273,99 @@ public class PositionService {
         }
 
         // QDII等基金净值延迟发布，降级展示最近一个交易日的实际涨幅
+        if (dto.getActualReturn() == null && "QDII".equals(dto.getFundType())) {
+            EstimateSourceDTO.EstimateItem latestActual = dataAggregator.getLatestActualSource(p.getFundCode());
+            if (latestActual != null && latestActual.isAvailable()) {
+                dto.setActualNav(latestActual.getEstimateNav());
+                dto.setActualReturn(latestActual.getEstimateReturn());
+                dto.setActualReturnDelayed(true);
+            }
+        }
+
+        return dto;
+    }
+
+    /**
+     * 优化的 PositionDTO 构建方法，使用批量查询结果避免 N+1
+     */
+    private PositionDTO buildPositionDTOOptimized(Position p, Map<String, Fund> fundMap,
+                                                   Map<Long, Account> accountMap, Map<String, BigDecimal> latestNavMap,
+                                                   Map<String, Map<String, Object>> estimateMap) {
+        PositionDTO dto = new PositionDTO();
+        dto.setId(p.getId());
+        dto.setFundCode(p.getFundCode());
+        dto.setShares(p.getShares());
+        dto.setCostAmount(p.getCostAmount());
+        dto.setAccountId(p.getAccountId());
+
+        // 账户名称（从批量查询结果获取）
+        if (p.getAccountId() != null) {
+            Account account = accountMap.get(p.getAccountId());
+            dto.setAccountName(account != null ? account.getName() : "");
+        }
+
+        // 基金信息（从批量查询结果获取）
+        Fund fund = fundMap.get(p.getFundCode());
+        if (fund != null) {
+            dto.setFundName(fund.getName());
+            dto.setFundType(fund.getType());
+        }
+
+        // 最新净值和估值（从批量查询结果获取）
+        BigDecimal latestNav = latestNavMap.get(p.getFundCode());
+        Map<String, Object> estimate = estimateMap.get(p.getFundCode());
+
+        if (latestNav != null) {
+            dto.setLatestNav(latestNav);
+            BigDecimal marketValue = p.getShares().multiply(latestNav).setScale(2, RoundingMode.HALF_UP);
+            dto.setMarketValue(marketValue);
+            dto.setProfit(marketValue.subtract(p.getCostAmount()).setScale(2, RoundingMode.HALF_UP));
+            if (p.getCostAmount().compareTo(BigDecimal.ZERO) > 0) {
+                dto.setProfitRate(dto.getProfit().divide(p.getCostAmount(), 4, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
+            }
+        }
+
+        if (estimate != null && !estimate.isEmpty()) {
+            dto.setEstimateNav((BigDecimal) estimate.get("estimateNav"));
+            dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
+        }
+
+        // 主数据源估值为空时，降级到多源智能估值
+        if (dto.getEstimateReturn() == null) {
+            try {
+                EstimateSourceDTO estimates = dataAggregator.getMultiSourceEstimates(p.getFundCode());
+                if (estimates != null && estimates.getSources() != null) {
+                    for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                        if ("smart".equals(source.getKey()) && source.isAvailable()) {
+                            dto.setEstimateReturn(source.getEstimateReturn());
+                            dto.setEstimateNav(source.getEstimateNav());
+                            break;
+                        }
+                    }
+                    for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                        if ("actual".equals(source.getKey()) && source.isAvailable()) {
+                            dto.setActualNav(source.getEstimateNav());
+                            dto.setActualReturn(source.getEstimateReturn());
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("多源智能估值降级失败: {}", p.getFundCode(), e);
+            }
+        }
+
+        // 今日实际净值
+        if (dto.getActualReturn() == null) {
+            EstimateSourceDTO.EstimateItem actualSource = dataAggregator.getActualSource(p.getFundCode());
+            if (actualSource != null && actualSource.isAvailable()) {
+                dto.setActualNav(actualSource.getEstimateNav());
+                dto.setActualReturn(actualSource.getEstimateReturn());
+            }
+        }
+
+        // QDII等基金净值延迟发布
         if (dto.getActualReturn() == null && "QDII".equals(dto.getFundType())) {
             EstimateSourceDTO.EstimateItem latestActual = dataAggregator.getLatestActualSource(p.getFundCode());
             if (latestActual != null && latestActual.isAvailable()) {

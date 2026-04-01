@@ -18,15 +18,6 @@ const AddPosition: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  useEffect(() => {
-    accountApi.list().then(setAccounts).catch(() => {});
-    const fundCode = searchParams.get('fundCode');
-    if (fundCode) {
-      form.setFieldValue('fundCode', fundCode);
-      fetchLatestNav(fundCode);
-    }
-  }, [form, searchParams]);
-
   const fetchLatestNav = useCallback(async (code: string) => {
     try {
       const detail = await fundApi.getDetail(code);
@@ -37,6 +28,15 @@ const AddPosition: React.FC = () => {
       setLatestNav(null);
     }
   }, []);
+
+  useEffect(() => {
+    accountApi.list().then(setAccounts).catch(() => {});
+    const fundCode = searchParams.get('fundCode');
+    if (fundCode) {
+      form.setFieldValue('fundCode', fundCode);
+      fetchLatestNav(fundCode);
+    }
+  }, [form, searchParams, fetchLatestNav]);
 
   const handleFundSearch = async (value: string) => {
     if (value.length < 2) { setSearchResults([]); return; }
