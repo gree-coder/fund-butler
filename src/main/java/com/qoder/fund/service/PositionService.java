@@ -32,6 +32,7 @@ public class PositionService {
     private final AccountMapper accountMapper;
     private final FundMapper fundMapper;
     private final FundDataAggregator dataAggregator;
+    private final BatchEstimateService batchEstimateService;
 
     public List<PositionDTO> list(Long accountId) {
         QueryWrapper<Position> query = new QueryWrapper<>();
@@ -66,27 +67,13 @@ public class PositionService {
         // 批量预同步今日净值（带延迟，避免LSJZ API限流）
         dataAggregator.ensureTodayNavSynced(fundCodes);
 
-        // 批量查询最新净值和估值
-        Map<String, BigDecimal> latestNavMap = new HashMap<>();
-        Map<String, Map<String, Object>> estimateMap = new HashMap<>();
-        for (String fundCode : fundCodes) {
-            try {
-                BigDecimal nav = dataAggregator.getLatestNav(fundCode);
-                if (nav != null) {
-                    latestNavMap.put(fundCode, nav);
-                }
-                Map<String, Object> estimate = dataAggregator.getEstimateNav(fundCode);
-                if (estimate != null && !estimate.isEmpty()) {
-                    estimateMap.put(fundCode, estimate);
-                }
-            } catch (Exception e) {
-                log.warn("批量获取净值失败: {}", fundCode, e);
-            }
-        }
+        // 使用批量估值服务优化查询性能
+        BatchEstimateService.BatchEstimateResult batchResult = batchEstimateService
+                .batchGetPositionEstimates(fundCodes);
 
         List<PositionDTO> result = new ArrayList<>();
         for (Position p : positions) {
-            result.add(buildPositionDTOOptimized(p, fundMap, accountMap, latestNavMap, estimateMap));
+            result.add(buildPositionDTOWithBatchResult(p, fundMap, accountMap, batchResult));
         }
         return result;
     }
@@ -372,6 +359,98 @@ public class PositionService {
                 dto.setActualNav(latestActual.getEstimateNav());
                 dto.setActualReturn(latestActual.getEstimateReturn());
                 dto.setActualReturnDelayed(true);
+            }
+        }
+
+        return dto;
+    }
+
+    /**
+     * 使用批量估值结果构建 PositionDTO（优化版本）
+     */
+    private PositionDTO buildPositionDTOWithBatchResult(Position p,
+                                                        Map<String, Fund> fundMap,
+                                                        Map<Long, Account> accountMap,
+                                                        BatchEstimateService.BatchEstimateResult batchResult) {
+        PositionDTO dto = new PositionDTO();
+        dto.setId(p.getId());
+        dto.setFundCode(p.getFundCode());
+        dto.setShares(p.getShares());
+        dto.setCostAmount(p.getCostAmount());
+        dto.setAccountId(p.getAccountId());
+
+        // 账户名称（从批量查询结果获取）
+        if (p.getAccountId() != null) {
+            Account account = accountMap.get(p.getAccountId());
+            dto.setAccountName(account != null ? account.getName() : "");
+        }
+
+        // 基金信息（从批量查询结果获取）
+        Fund fund = fundMap.get(p.getFundCode());
+        if (fund != null) {
+            dto.setFundName(fund.getName());
+            dto.setFundType(fund.getType());
+        }
+
+        // 最新净值（从批量结果获取）
+        BigDecimal latestNav = batchResult.latestNavMap().get(p.getFundCode());
+        if (latestNav != null) {
+            dto.setLatestNav(latestNav);
+            BigDecimal marketValue = p.getShares().multiply(latestNav).setScale(2, RoundingMode.HALF_UP);
+            dto.setMarketValue(marketValue);
+            dto.setProfit(marketValue.subtract(p.getCostAmount()).setScale(2, RoundingMode.HALF_UP));
+            if (p.getCostAmount().compareTo(BigDecimal.ZERO) > 0) {
+                dto.setProfitRate(dto.getProfit().divide(p.getCostAmount(), 4, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
+            }
+        }
+
+        // 估值信息（从批量结果获取）
+        Map<String, Object> estimate = batchResult.estimateMap().get(p.getFundCode());
+        if (estimate != null && !estimate.isEmpty()) {
+            dto.setEstimateNav((BigDecimal) estimate.get("estimateNav"));
+            dto.setEstimateReturn((BigDecimal) estimate.get("estimateReturn"));
+        }
+
+        // 智能估值和实际净值（从多源批量结果获取）
+        if (dto.getEstimateReturn() == null) {
+            BigDecimal smartReturn = batchResult.getSmartEstimateReturn(p.getFundCode());
+            if (smartReturn != null) {
+                dto.setEstimateReturn(smartReturn);
+                // 估算净值 = 最新净值 * (1 + 涨跌幅/100)
+                if (latestNav != null) {
+                    BigDecimal estimateNav = latestNav.multiply(
+                            BigDecimal.ONE.add(smartReturn.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP))
+                    ).setScale(4, RoundingMode.HALF_UP);
+                    dto.setEstimateNav(estimateNav);
+                }
+            }
+        }
+
+        // 实际净值
+        BigDecimal actualReturn = batchResult.getActualReturn(p.getFundCode());
+        if (actualReturn != null) {
+            dto.setActualReturn(actualReturn);
+            if (latestNav != null) {
+                BigDecimal actualNav = latestNav.multiply(
+                        BigDecimal.ONE.add(actualReturn.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP))
+                ).setScale(4, RoundingMode.HALF_UP);
+                dto.setActualNav(actualNav);
+            }
+        }
+
+        // QDII等基金净值延迟发布
+        if (dto.getActualReturn() == null && "QDII".equals(dto.getFundType())) {
+            EstimateSourceDTO dto2 = batchResult.multiSourceEstimateMap().get(p.getFundCode());
+            if (dto2 != null) {
+                dto2.getSources().stream()
+                        .filter(s -> "actual".equals(s.getKey()) && s.isAvailable() && s.isDelayed())
+                        .findFirst()
+                        .ifPresent(source -> {
+                            dto.setActualNav(source.getEstimateNav());
+                            dto.setActualReturn(source.getEstimateReturn());
+                            dto.setActualReturnDelayed(true);
+                        });
             }
         }
 

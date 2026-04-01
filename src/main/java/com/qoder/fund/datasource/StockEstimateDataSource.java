@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,13 +27,18 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class StockEstimateDataSource {
 
+    private static final String SOURCE_NAME = "stock";
+
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final FundMapper fundMapper;
+    private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
 
-    public StockEstimateDataSource(ObjectMapper objectMapper, FundMapper fundMapper) {
+    public StockEstimateDataSource(ObjectMapper objectMapper, FundMapper fundMapper,
+                                   com.qoder.fund.config.CircuitBreaker circuitBreaker) {
         this.objectMapper = objectMapper;
         this.fundMapper = fundMapper;
+        this.circuitBreaker = circuitBreaker;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -45,10 +51,17 @@ public class StockEstimateDataSource {
      * 优先使用完整持仓（年报/半年报），降级到十大重仓股
      */
     public Map<String, Object> estimateByStocks(String fundCode, BigDecimal lastNav) {
+        // 熔断检查
+        if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+            log.warn("股票估值数据源已熔断，跳过请求: {}", fundCode);
+            return Collections.emptyMap();
+        }
+
         // ETF基金直接使用二级市场实时价格
         if (isEtf(fundCode)) {
             Map<String, Object> etfResult = estimateByEtfPrice(fundCode, lastNav);
             if (!etfResult.isEmpty()) {
+                circuitBreaker.recordSuccess(SOURCE_NAME);
                 return etfResult;
             }
             log.warn("ETF实时价格获取失败，降级到重仓股估算: {}", fundCode);
@@ -60,6 +73,7 @@ public class StockEstimateDataSource {
             Fund fund = fundMapper.selectById(fundCode);
             if (fund == null) {
                 log.warn("基金数据不存在: {}", fundCode);
+                circuitBreaker.recordFailure(SOURCE_NAME);
                 return result;
             }
 
@@ -77,6 +91,7 @@ public class StockEstimateDataSource {
 
             if (holdings == null || holdings.isEmpty()) {
                 log.warn("基金持仓数据不存在: {}", fundCode);
+                circuitBreaker.recordFailure(SOURCE_NAME);
                 return result;
             }
 
@@ -99,7 +114,10 @@ public class StockEstimateDataSource {
                 ratioMap.put(formattedCode, ratio);
             }
 
-            if (stockCodes.isEmpty()) return result;
+            if (stockCodes.isEmpty()) {
+                circuitBreaker.recordFailure(SOURCE_NAME);
+                return result;
+            }
 
             // 3. 获取股票实时行情（分批请求，每批50只）
             Map<String, BigDecimal> stockReturns = fetchStockReturnsBatched(stockCodes);
@@ -128,9 +146,15 @@ public class StockEstimateDataSource {
                 result.put("source", "stock_estimate");
                 result.put("coverageRatio", totalRatio);
                 log.info("股票估值: fund={}, return={}, coverage={}%, holdings={}", fundCode, estimateReturn, totalRatio, holdingsSource);
+
+                // 记录成功
+                circuitBreaker.recordSuccess(SOURCE_NAME);
+            } else {
+                circuitBreaker.recordFailure(SOURCE_NAME);
             }
         } catch (Exception e) {
             log.error("股票估值失败: fund={}", fundCode, e);
+            circuitBreaker.recordFailure(SOURCE_NAME);
         }
         return result;
     }
