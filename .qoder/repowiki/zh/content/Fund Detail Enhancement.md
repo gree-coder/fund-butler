@@ -26,10 +26,10 @@
 
 ## 更新摘要
 **变更内容**
-- 增强了AppLayout组件的导航持久性功能，实现路径跟踪机制
-- 改善用户在'基金查询'区域内的浏览体验
-- 新增了lastSearchPath引用和useEffect路径跟踪逻辑
-- 优化了菜单选择状态判断逻辑
+- 新增投资组合披露日期提取和显示功能，支持年度报告和季度报告日期解析
+- 在FundDetail组件中添加橙色标签显示季度报告披露日期
+- 提供关于报告滞后风险的工具提示说明
+- 增强了数据源解析能力，支持多种格式的披露日期识别
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -53,6 +53,7 @@
 - **数据聚合**：汇总多平台持仓，一屏掌握投资全貌
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
 - **导航持久性**：增强的路径跟踪机制，改善用户浏览体验
+- **披露日期追踪**：自动提取并显示基金投资组合披露日期，提供数据时效性提醒
 
 ### 技术架构
 
@@ -99,9 +100,9 @@ BE_MAPPER --> DB_NAV
 
 **图表来源**
 - [AppLayout.tsx:1-114](file://fund-web/src/components/AppLayout.tsx#L1-L114)
-- [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
+- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
 - [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
-- [FundDataAggregator.java:1-541](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L541)
+- [FundDataAggregator.java:1-686](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L686)
 
 **章节来源**
 - [PRD.md:1-488](file://PRD.md#L1-L488)
@@ -126,6 +127,7 @@ BE_MAPPER --> DB_NAV
 - **实时估值展示**：支持多数据源估值切换
 - **历史业绩对比**：展示近1周到成立以来的业绩表现
 - **持仓分析**：十大重仓股和行业分布可视化
+- **披露日期追踪**：自动提取并显示季度/年度报告披露日期，提供橙色标签和工具提示说明
 - **快速操作**：添加自选、加持仓、刷新数据等功能
 
 #### 基金搜索结果页面 (SearchResult)
@@ -168,14 +170,15 @@ FundDataAggregator实现多数据源聚合和降级策略：
 - 备用数据源：新浪财经、腾讯财经
 - 兜底机制：基于重仓股的智能估算
 - 缓存策略：多级缓存优化性能
+- **披露日期解析**：支持年度报告和季度报告日期提取
 
 **章节来源**
 - [AppLayout.tsx:1-114](file://fund-web/src/components/AppLayout.tsx#L1-L114)
-- [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
+- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
 - [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
 - [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
 - [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
-- [FundDataAggregator.java:1-541](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L541)
+- [FundDataAggregator.java:1-686](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L686)
 
 ## 架构概览
 
@@ -196,7 +199,7 @@ Controller->>Service : getDetail(code)
 Service->>Aggregator : getFundDetail(code)
 Aggregator->>EastMoney : getFundDetail(code)
 EastMoney-->>Aggregator : 基金详情数据
-Aggregator->>Aggregator : 检查估值数据
+Aggregator->>Aggregator : 解析披露日期
 Aggregator->>StockEstimate : estimateByStocks(code, lastNav)
 StockEstimate-->>Aggregator : 估算估值
 Aggregator->>DB : 保存基金信息
@@ -216,7 +219,7 @@ Controller-->>Client : JSON响应
 
 ```mermaid
 flowchart TD
-A[前端导航) --> B[AppLayout组件]
+A[前端导航] --> B[AppLayout组件]
 B --> C[路径跟踪逻辑]
 C --> D[lastSearchPath引用]
 D --> E[useEffect监听]
@@ -334,6 +337,7 @@ class FundDetailDTO {
 +Holdings[] topHoldings
 +IndustryDist[] industryDist
 +SectorChanges[] sectorChanges
++string holdingsDate
 }
 class EstimateItem {
 +string key
@@ -367,7 +371,7 @@ API->>Service : getDetail(code)
 Service->>Aggregator : getFundDetail(code)
 Aggregator->>EastMoney : getFundDetail(code)
 EastMoney-->>Aggregator : 基金详情
-Aggregator->>Aggregator : 检查估值
+Aggregator->>Aggregator : 解析披露日期
 Aggregator->>Sina : getEstimateNav(code)
 Sina-->>Aggregator : 估值数据
 Aggregator->>Tencent : getEstimateNav(code)
@@ -384,8 +388,29 @@ API-->>Page : 返回数据
 - [FundService.java:33-35](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L35)
 - [FundDataAggregator.java:174-281](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L174-L281)
 
+#### 披露日期追踪功能
+```mermaid
+flowchart TD
+A[获取基金详情] --> B[解析持仓披露日期]
+B --> C{日期格式?}
+C --> |完整日期| D[YYYY-MM-DD格式]
+C --> |季度报告| E[季度转换为月末日期]
+C --> |年度报告| F[报告期转换为年末日期]
+D --> G[设置holdingsDate]
+E --> G
+F --> G
+G --> H[前端显示橙色标签]
+H --> I[工具提示说明滞后风险]
+```
+
+**图表来源**
+- [EastMoneyDataSource.java:511-538](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L511-L538)
+- [FundDetail.tsx:280-286](file://fund-web/src/pages/Fund/FundDetail.tsx#L280-L286)
+
+**更新** 新增了投资组合披露日期提取和显示功能，支持年度报告和季度报告日期解析，并在前端添加了橙色标签和工具提示说明。
+
 **章节来源**
-- [FundDetail.tsx:1-270](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L270)
+- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
 - [fund.ts:61-76](file://fund-web/src/api/fund.ts#L61-L76)
 
 ### 基金搜索结果组件分析
@@ -472,6 +497,32 @@ H --> I
 2. **回退机制**：当历史数据不足时使用固定权重加权平均
 3. **权重分配**：默认权重为天天基金35%、新浪财经25%、腾讯财经20%、股票估算20%
 
+#### 披露日期解析增强
+```mermaid
+flowchart TD
+A[获取F10持仓明细] --> B[解析披露日期]
+B --> C{匹配完整日期?}
+C --> |是| D[YYYY-MM-DD格式]
+C --> |否| E[匹配季度报告]
+E --> F{匹配成功?}
+F --> |是| G[转换为季度末日期]
+F --> |否| H[匹配年度报告]
+H --> I{匹配成功?}
+I --> |是| J[转换为年末日期]
+I --> |否| K[日期解析失败]
+G --> L[设置holdingsDate]
+J --> L
+D --> L
+K --> M[保持原有日期]
+L --> N[返回给前端]
+M --> N
+```
+
+**图表来源**
+- [EastMoneyDataSource.java:511-538](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L511-L538)
+
+**更新** 增强了数据源解析能力，支持多种格式的披露日期识别，包括年度报告和季度报告格式。
+
 **章节来源**
 - [FundDataAggregator.java:427-486](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L427-L486)
 
@@ -483,6 +534,7 @@ H --> I
 - 净值历史查询
 - 实时估值获取
 - 基金持仓和行业分析
+- **披露日期解析**：支持年度报告和季度报告日期提取
 
 #### 股票估算数据源
 基于重仓股实时行情的智能估算：
@@ -491,7 +543,7 @@ H --> I
 - 提供覆盖度比率评估估算质量
 
 **章节来源**
-- [EastMoneyDataSource.java:1-696](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L1-L696)
+- [EastMoneyDataSource.java:1-923](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L1-L923)
 - [StockEstimateDataSource.java:1-210](file://src/main/java/com/qoder/fund/datasource/StockEstimateDataSource.java#L1-L210)
 
 ## 依赖分析
@@ -556,6 +608,7 @@ tinyint risk_level
 json fee_rate
 json top_holdings
 json industry_dist
+date holdings_date
 datetime updated_at
 }
 FUND_NAV {
@@ -584,6 +637,8 @@ POSITION }|--|| FUND : "fund_code"
 - [schema.sql:1-93](file://src/main/resources/db/schema.sql#L1-L93)
 - [Fund.java:1-42](file://src/main/java/com/qoder/fund/entity/Fund.java#L1-L42)
 
+**更新** 新增了holdings_date字段，用于存储基金投资组合披露日期。
+
 **章节来源**
 - [PRD.md:347-400](file://PRD.md#L347-L400)
 - [schema.sql:1-93](file://src/main/resources/db/schema.sql#L1-L93)
@@ -607,11 +662,14 @@ POSITION }|--|| FUND : "fund_code"
 - 组件懒加载，提升首屏加载速度
 - 数据格式化函数优化，减少重复计算
 - **导航持久性优化**：通过useRef避免不必要的重渲染
+- **披露日期显示优化**：条件渲染避免不必要的DOM更新
 
 ### 导航持久性性能优化
 - 使用useRef存储lastSearchPath，避免状态更新触发重渲染
 - useEffect仅在location变化时执行路径跟踪逻辑
 - 智能菜单选择逻辑，减少DOM操作次数
+
+**更新** 新增了披露日期追踪功能的性能优化，包括条件渲染和工具提示的延迟加载。
 
 **章节来源**
 - [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
@@ -640,6 +698,14 @@ POSITION }|--|| FUND : "fund_code"
 2. **验证lastSearchPath引用**：确保路径正确存储和更新
 3. **测试菜单选择逻辑**：确认selectedKey正确计算
 
+#### 披露日期解析问题
+1. **检查HTML解析**：确认F10页面格式是否发生变化
+2. **验证正则表达式**：确保日期格式匹配规则正确
+3. **测试季度转换逻辑**：确认季度到月末日期的转换准确
+4. **检查数据库回退**：确认holdingsDate字段的数据库存储
+
+**更新** 新增了披露日期解析问题的故障排除指南。
+
 **章节来源**
 - [FundDataAggregator.java:158-169](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L158-L169)
 - [application.yml:18-21](file://src/main/resources/application.yml#L18-L21)
@@ -654,10 +720,12 @@ POSITION }|--|| FUND : "fund_code"
 3. **性能保障**：多级缓存和异步处理机制，保证系统的响应速度
 4. **可扩展性**：模块化的架构设计，便于后续功能扩展
 5. **导航持久性增强**：新增的路径跟踪机制显著改善了用户在"基金查询"区域内的浏览体验
+6. **披露日期追踪**：自动提取并显示基金投资组合披露日期，提供数据时效性提醒
 
 **更新亮点**：
-- AppLayout组件的导航持久性功能增强了用户在基金查询区域内的浏览连续性
-- 通过lastSearchPath引用和useEffect路径跟踪，实现了智能的导航状态保持
-- 改善了用户从搜索结果到基金详情的导航体验，减少了路径丢失的问题
+- **披露日期追踪功能**：新增投资组合披露日期提取和显示功能，支持年度报告和季度报告格式
+- **前端展示增强**：在FundDetail组件中添加橙色标签显示季度报告披露日期，并提供关于报告滞后风险的工具提示说明
+- **数据源解析优化**：增强了数据源解析能力，支持多种格式的披露日期识别
+- **用户风险提示**：通过工具提示向用户提供报告滞后风险的明确说明
 
 项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。

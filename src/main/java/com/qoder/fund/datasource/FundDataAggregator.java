@@ -521,7 +521,14 @@ public class FundDataAggregator {
 
         if (availableSources.isEmpty()) {
             smartItem.setAvailable(false);
-            smartItem.setDescription("无可用数据源");
+            // 货币基金和债券基金的特殊说明
+            if ("MONEY".equals(fundType)) {
+                smartItem.setDescription("货币基金估值参考意义有限（日涨幅约0.01%，波动极小），建议关注七日年化收益率");
+            } else if ("BOND".equals(fundType)) {
+                smartItem.setDescription("债券基金估值波动较小，机构估值相对可靠，实时估值可能存在小幅偏差");
+            } else {
+                smartItem.setDescription("无可用数据源");
+            }
             return;
         }
 
