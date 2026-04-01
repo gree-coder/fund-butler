@@ -411,14 +411,14 @@ public class FundDataSyncScheduler {
     }
 
     /**
-     * 每交易日14:50快照各数据源的估值预测
-     * 在收盘前10分钟抓取，此时估值最接近最终结果
+     * 每交易日14:50快照A股基金估值（收盘前最准确）
+     * QDII基金在22:00单独快照，因为海外市场此时未开盘
      */
     @Scheduled(cron = "0 50 14 * * MON-FRI")
-    public void snapshotPredictions() {
+    public void snapshotDomesticFundPredictions() {
         if (!isTradingDay(LocalDate.now())) return;
 
-        log.info("开始快照估值预测数据...");
+        log.info("开始快照A股基金估值预测...");
         Set<String> fundCodes = getTrackedFundCodes();
         if (fundCodes.isEmpty()) {
             log.info("无需快照预测, 无用户关注的基金");
@@ -427,14 +427,21 @@ public class FundDataSyncScheduler {
 
         LocalDate today = LocalDate.now();
         int count = 0;
+        int skipped = 0;
 
         for (String fundCode : fundCodes) {
             try {
+                // 获取基金类型，QDII基金跳过（在22:00批次处理）
+                Fund fund = fundMapper.selectById(fundCode);
+                if (fund != null && "QDII".equals(fund.getType())) {
+                    skipped++;
+                    continue;
+                }
+
                 EstimateSourceDTO estimates = fundDataAggregator.getMultiSourceEstimates(fundCode);
                 if (estimates == null || estimates.getSources() == null) continue;
 
                 for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
-                    // 只记录 eastmoney/sina/tencent/stock 四个实际数据源
                     String key = source.getKey();
                     if (!"eastmoney".equals(key) && !"sina".equals(key)
                             && !"tencent".equals(key) && !"stock".equals(key)) {
@@ -442,7 +449,6 @@ public class FundDataSyncScheduler {
                     }
                     if (!source.isAvailable()) continue;
 
-                    // 检查是否已存在
                     long exists = estimatePredictionMapper.selectCount(
                             new QueryWrapper<EstimatePrediction>()
                                     .eq("fund_code", fundCode)
@@ -468,7 +474,74 @@ public class FundDataSyncScheduler {
                 log.warn("快照预测失败: fund={}", fundCode, e);
             }
         }
-        log.info("估值预测快照完成, 保存 {} 条记录", count);
+        log.info("A股基金估值快照完成, 保存 {} 条记录, 跳过 {} 只QDII基金(等待22:00批次)", count, skipped);
+    }
+
+    /**
+     * 每交易日22:00快照QDII基金估值
+     * 此时美股已开盘，港股已收盘，估值更准确
+     */
+    @Scheduled(cron = "0 0 22 * * MON-FRI")
+    public void snapshotQdiiFundPredictions() {
+        if (!isTradingDay(LocalDate.now())) return;
+
+        log.info("开始快照QDII基金估值预测...");
+        Set<String> fundCodes = getTrackedFundCodes();
+        if (fundCodes.isEmpty()) {
+            log.info("无需快照预测, 无用户关注的基金");
+            return;
+        }
+
+        LocalDate today = LocalDate.now();
+        int count = 0;
+        int skipped = 0;
+
+        for (String fundCode : fundCodes) {
+            try {
+                // 只处理QDII基金
+                Fund fund = fundMapper.selectById(fundCode);
+                if (fund == null || !"QDII".equals(fund.getType())) {
+                    skipped++;
+                    continue;
+                }
+
+                EstimateSourceDTO estimates = fundDataAggregator.getMultiSourceEstimates(fundCode);
+                if (estimates == null || estimates.getSources() == null) continue;
+
+                for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
+                    String key = source.getKey();
+                    if (!"eastmoney".equals(key) && !"sina".equals(key)
+                            && !"tencent".equals(key) && !"stock".equals(key)) {
+                        continue;
+                    }
+                    if (!source.isAvailable()) continue;
+
+                    long exists = estimatePredictionMapper.selectCount(
+                            new QueryWrapper<EstimatePrediction>()
+                                    .eq("fund_code", fundCode)
+                                    .eq("source_key", key)
+                                    .eq("predict_date", today));
+                    if (exists > 0) continue;
+
+                    EstimatePrediction prediction = new EstimatePrediction();
+                    prediction.setFundCode(fundCode);
+                    prediction.setSourceKey(key);
+                    prediction.setPredictDate(today);
+                    prediction.setPredictedNav(source.getEstimateNav());
+                    prediction.setPredictedReturn(source.getEstimateReturn());
+                    estimatePredictionMapper.insert(prediction);
+                    count++;
+                }
+
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("QDII快照预测失败: fund={}", fundCode, e);
+            }
+        }
+        log.info("QDII基金估值快照完成, 保存 {} 条记录, 跳过 {} 只非QDII基金", count, skipped);
     }
 
     /**
