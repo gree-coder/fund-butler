@@ -1,11 +1,13 @@
 package com.qoder.fund.controller;
 
 import com.qoder.fund.common.Result;
+import com.qoder.fund.dto.EstimateAnalysisDTO;
 import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import com.qoder.fund.dto.NavHistoryDTO;
 import com.qoder.fund.dto.RefreshResultDTO;
+import com.qoder.fund.service.EstimateAnalysisService;
 import com.qoder.fund.service.FundService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +27,7 @@ import java.util.Map;
 public class FundController {
 
     private final FundService fundService;
+    private final EstimateAnalysisService estimateAnalysisService;
 
     @GetMapping("/search")
     public Result<Map<String, Object>> search(@RequestParam String keyword) {
@@ -62,5 +65,14 @@ public class FundController {
             return Result.error(404, "基金不存在");
         }
         return Result.success(result);
+    }
+
+    /**
+     * 获取数据源准确度分析
+     */
+    @GetMapping("/{code}/estimate-analysis")
+    public Result<EstimateAnalysisDTO> getEstimateAnalysis(@PathVariable String code) {
+        EstimateAnalysisDTO analysis = estimateAnalysisService.getEstimateAnalysis(code);
+        return Result.success(analysis);
     }
 }

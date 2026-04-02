@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Button, Space, Tooltip, Dropdown, message } from 'antd';
+import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Button, Space, Tooltip, Dropdown, message, Tabs } from 'antd';
 import { StarOutlined, StarFilled, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { fundApi, type FundDetail as FundDetailType, type EstimateItem } from '../../api/fund';
@@ -8,6 +8,7 @@ import { watchlistApi } from '../../api/watchlist';
 import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType, FUND_TYPE_TAG_COLOR } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
 import PageSkeleton from '../../components/PageSkeleton';
+import { EstimateAnalysisTab } from './EstimateAnalysisTab';
 
 const PERIODS = [
   { label: '近1月', value: '1m' },
@@ -260,80 +261,99 @@ const FundDetail: React.FC = () => {
         </div>
       </Card>
 
-      {/* NAV Chart */}
-      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>净值走势</span>} extra={<Segmented size="small" options={PERIODS} value={period} onChange={(v) => setPeriod(v as string)} />} style={{ marginBottom: 16 }}>
-        <ReactECharts option={chartOption} theme="fundTheme" style={{ height: 350 }} />
-      </Card>
+      {/* Tabs */}
+      <Tabs
+        defaultActiveKey="overview"
+        items={[
+          {
+            key: 'overview',
+            label: '概览',
+            children: (
+              <>
+                {/* NAV Chart */}
+                <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>净值走势</span>} extra={<Segmented size="small" options={PERIODS} value={period} onChange={(v) => setPeriod(v as string)} />} style={{ marginBottom: 16 }}>
+                  <ReactECharts option={chartOption} theme="fundTheme" style={{ height: 350 }} />
+                </Card>
 
-      {/* Performance */}
-      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>历史业绩</span>} style={{ marginBottom: 16 }}>
-        <Table columns={perfColumns} dataSource={[detail.performance]} pagination={false} rowKey={() => 'perf'} size="small" />
-      </Card>
+                {/* Performance */}
+                <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>历史业绩</span>} style={{ marginBottom: 16 }}>
+                  <Table columns={perfColumns} dataSource={[detail.performance]} pagination={false} rowKey={() => 'perf'} size="small" />
+                </Card>
 
-      <Row gutter={16}>
-        <Col span={12}>
-          <Card 
-            className="fund-card-static" 
-            title={
-              <Space>
-                <span style={{ fontWeight: 600 }}>十大重仓股</span>
-                {detail.holdingsDate && (
-                  <Tooltip title={`持仓数据披露日期：${detail.holdingsDate}，季报披露存在滞后性，请注意时效性`}>
-                    <Tag color="orange" style={{ marginLeft: 8, fontWeight: 400 }}>
-                      数据截至 {detail.holdingsDate}
-                    </Tag>
-                  </Tooltip>
-                )}
-              </Space>
-            } 
-            style={{ marginBottom: 16 }}
-          >
-            <Table columns={holdingColumns} dataSource={detail.topHoldings || []} pagination={false} rowKey="stockCode" size="small" />
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>行业分布</span>} style={{ marginBottom: 16 }}>
-            {detail.industryDist && detail.industryDist.length > 0
-              ? <ReactECharts option={industryOption} theme="fundTheme" style={{ height: 280 }} />
-              : <div style={{ textAlign: 'center', color: '#bfbfbf', padding: 40 }}>暂无数据</div>
-            }
-          </Card>
-          {detail.sectorChanges && detail.sectorChanges.length > 0 && (
-            <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>关联板块今日涨幅</span>} size="small" style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {detail.sectorChanges.map((s) => (
-                  <div
-                    key={s.sectorName}
-                    className="fund-sector-tag"
-                    style={{
-                      background: s.changePercent > 0 ? '#FFF1F0' : s.changePercent < 0 ? '#F6FFED' : '#FAFAFA',
-                      color: s.changePercent > 0 ? '#F5222D' : s.changePercent < 0 ? '#52C41A' : '#8C8C8C',
-                    }}
-                  >
-                    {s.sectorName}&nbsp;<span style={{ fontWeight: 600 }}>{s.changePercent > 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-        </Col>
-      </Row>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Card
+                      className="fund-card-static"
+                      title={
+                        <Space>
+                          <span style={{ fontWeight: 600 }}>十大重仓股</span>
+                          {detail.holdingsDate && (
+                            <Tooltip title={`持仓数据披露日期：${detail.holdingsDate}，季报披露存在滞后性，请注意时效性`}>
+                              <Tag color="orange" style={{ marginLeft: 8, fontWeight: 400 }}>
+                                数据截至 {detail.holdingsDate}
+                              </Tag>
+                            </Tooltip>
+                          )}
+                        </Space>
+                      }
+                      style={{ marginBottom: 16 }}
+                    >
+                      <Table columns={holdingColumns} dataSource={detail.topHoldings || []} pagination={false} rowKey="stockCode" size="small" />
+                    </Card>
+                  </Col>
+                  <Col span={12}>
+                    <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>行业分布</span>} style={{ marginBottom: 16 }}>
+                      {detail.industryDist && detail.industryDist.length > 0
+                        ? <ReactECharts option={industryOption} theme="fundTheme" style={{ height: 280 }} />
+                        : <div style={{ textAlign: 'center', color: '#bfbfbf', padding: 40 }}>暂无数据</div>
+                      }
+                    </Card>
+                    {detail.sectorChanges && detail.sectorChanges.length > 0 && (
+                      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>关联板块今日涨幅</span>} size="small" style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {detail.sectorChanges.map((s) => (
+                            <div
+                              key={s.sectorName}
+                              className="fund-sector-tag"
+                              style={{
+                                background: s.changePercent > 0 ? '#FFF1F0' : s.changePercent < 0 ? '#F6FFED' : '#FAFAFA',
+                                color: s.changePercent > 0 ? '#F5222D' : s.changePercent < 0 ? '#52C41A' : '#8C8C8C',
+                              }}
+                            >
+                              {s.sectorName}&nbsp;<span style={{ fontWeight: 600 }}>{s.changePercent > 0 ? '+' : ''}{s.changePercent?.toFixed(2)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+                  </Col>
+                </Row>
 
-      {/* Fund Info */}
-      <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>基金信息</span>}>
-        <Descriptions column={2} size="small" bordered>
-          <Descriptions.Item label="基金代码"><span className="fund-code" style={{ fontSize: 13 }}>{detail.code}</span></Descriptions.Item>
-          <Descriptions.Item label="基金类型"><Tag color={FUND_TYPE_TAG_COLOR[detail.type] || 'default'}>{formatFundType(detail.type)}</Tag></Descriptions.Item>
-          <Descriptions.Item label="基金公司">{detail.company}</Descriptions.Item>
-          <Descriptions.Item label="基金经理">{detail.manager}</Descriptions.Item>
-          <Descriptions.Item label="成立日期">{detail.establishDate}</Descriptions.Item>
-          <Descriptions.Item label="基金规模">{detail.scale ? `${formatAmount(detail.scale)}亿` : '--'}</Descriptions.Item>
-          <Descriptions.Item label="风险等级">{['', '低', '中低', '中', '中高', '高'][detail.riskLevel] || '--'}</Descriptions.Item>
-          <Descriptions.Item label="申购费">{detail.feeRate?.purchaseRate ?? '--'}</Descriptions.Item>
-          <Descriptions.Item label="管理费">{detail.feeRate?.managementFee ?? '--'}</Descriptions.Item>
-          <Descriptions.Item label="托管费">{detail.feeRate?.custodyFee ?? '--'}</Descriptions.Item>
-        </Descriptions>
-      </Card>
+                {/* Fund Info */}
+                <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>基金信息</span>}>
+                  <Descriptions column={2} size="small" bordered>
+                    <Descriptions.Item label="基金代码"><span className="fund-code" style={{ fontSize: 13 }}>{detail.code}</span></Descriptions.Item>
+                    <Descriptions.Item label="基金类型"><Tag color={FUND_TYPE_TAG_COLOR[detail.type] || 'default'}>{formatFundType(detail.type)}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="基金公司">{detail.company}</Descriptions.Item>
+                    <Descriptions.Item label="基金经理">{detail.manager}</Descriptions.Item>
+                    <Descriptions.Item label="成立日期">{detail.establishDate}</Descriptions.Item>
+                    <Descriptions.Item label="基金规模">{detail.scale ? `${formatAmount(detail.scale)}亿` : '--'}</Descriptions.Item>
+                    <Descriptions.Item label="风险等级">{['', '低', '中低', '中', '中高', '高'][detail.riskLevel] || '--'}</Descriptions.Item>
+                    <Descriptions.Item label="申购费">{detail.feeRate?.purchaseRate ?? '--'}</Descriptions.Item>
+                    <Descriptions.Item label="管理费">{detail.feeRate?.managementFee ?? '--'}</Descriptions.Item>
+                    <Descriptions.Item label="托管费">{detail.feeRate?.custodyFee ?? '--'}</Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: 'estimate-analysis',
+            label: '数据源分析',
+            children: <EstimateAnalysisTab fundCode={code!} />,
+          },
+        ]}
+      />
     </div>
   );
 };
