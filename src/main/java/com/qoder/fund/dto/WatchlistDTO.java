@@ -3,7 +3,7 @@ package com.qoder.fund.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.time.LocalDate;
 import java.util.Map;
 
 @Data
@@ -18,6 +18,8 @@ public class WatchlistDTO {
     private BigDecimal actualReturn;
     /** 实际涨幅是否为延迟数据(QDII T+1) */
     private Boolean actualReturnDelayed;
+    /** 实际涨幅对应的净值日期(QDII延迟时显示) */
+    private LocalDate actualNavDate;
     private Map<String, BigDecimal> performance;
     /** 智能预估涨跌幅 */
     private BigDecimal smartEstimateReturn;

@@ -19,11 +19,12 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setLoading(true);
+    let mounted = true;
     dashboardApi.getData()
-      .then(setData)
+      .then((data) => { if (mounted) setData(data); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {

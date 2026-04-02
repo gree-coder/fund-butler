@@ -1,8 +1,8 @@
 package com.qoder.fund.datasource;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qoder.fund.config.CircuitBreaker;
 import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.FundSearchDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -25,11 +25,15 @@ import java.util.regex.Pattern;
 @Component
 public class EastMoneyDataSource implements FundDataSource {
 
+    private static final String SOURCE_NAME = "eastmoney";
+
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final CircuitBreaker circuitBreaker;
 
-    public EastMoneyDataSource(ObjectMapper objectMapper) {
+    public EastMoneyDataSource(ObjectMapper objectMapper, CircuitBreaker circuitBreaker) {
         this.objectMapper = objectMapper;
+        this.circuitBreaker = circuitBreaker;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
@@ -43,12 +47,21 @@ public class EastMoneyDataSource implements FundDataSource {
 
     @Override
     public List<FundSearchDTO> searchFund(String keyword) {
+        // 熔断检查
+        if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+            log.warn("熔断器开启，跳过搜索请求: {}", keyword);
+            return Collections.emptyList();
+        }
+
         try {
             // 天天基金搜索接口
             String url = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
                     + "?callback=&m=1&key=" + keyword;
             String body = httpGet(url);
-            if (body == null || body.isEmpty()) return Collections.emptyList();
+            if (body == null || body.isEmpty()) {
+                circuitBreaker.recordFailure(SOURCE_NAME);
+                return Collections.emptyList();
+            }
 
             JsonNode root = objectMapper.readTree(body);
             JsonNode datas = root.path("Datas");
@@ -494,6 +507,36 @@ public class EastMoneyDataSource implements FundDataSource {
             String body = httpGetWithReferer(url);
             if (body != null && body.contains("<tbody>")) {
                 List<Map<String, Object>> holdings = new ArrayList<>();
+
+                // 解析持仓披露日期（如：截止日期：2024-12-31 或 报告期：2024年年报）
+                Pattern datePattern = Pattern.compile("(?:截止日期|报告期)[：:]\\s*(\\d{4})[-年](\\d{1,2})[-月]?(\\d{1,2})");
+                Matcher dateMatcher = datePattern.matcher(body);
+                if (dateMatcher.find()) {
+                    String year = dateMatcher.group(1);
+                    String month = dateMatcher.group(2);
+                    String day = dateMatcher.group(3);
+                    dto.setHoldingsDate(String.format("%s-%02d-%02d",
+                            year, Integer.parseInt(month), Integer.parseInt(day)));
+                } else {
+                    // 尝试匹配季度报告（如：2024年第四季度）
+                    Pattern quarterPattern = Pattern.compile("(\\d{4})年第?(一|二|三|四)季度");
+                    Matcher quarterMatcher = quarterPattern.matcher(body);
+                    if (quarterMatcher.find()) {
+                        int year = Integer.parseInt(quarterMatcher.group(1));
+                        String quarter = quarterMatcher.group(2);
+                        int quarterNum = switch (quarter) {
+                            case "一" -> 1;
+                            case "二" -> 2;
+                            case "三" -> 3;
+                            case "四" -> 4;
+                            default -> 1;
+                        };
+                        // Q1=3月底, Q2=6月底, Q3=9月底, Q4=12月底
+                        int month = quarterNum * 3;
+                        dto.setHoldingsDate(String.format("%d-%02d-30", year, month));
+                    }
+                }
+
                 // 解析表格行
                 Pattern rowPattern = Pattern.compile("<tr>\\s*<td>(\\d+)</td>.*?</tr>", Pattern.DOTALL);
                 Matcher rowMatcher = rowPattern.matcher(body);

@@ -40,5 +40,7 @@ public class Fund {
     @TableField(typeHandler = JacksonTypeHandler.class)
     private List<Map<String, Object>> industryDist;
 
+    private LocalDate holdingsDate;
+
     private LocalDateTime updatedAt;
 }

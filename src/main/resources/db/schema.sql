@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS fund (
     top_holdings    JSON          COMMENT '十大重仓股JSON',
     all_holdings    JSON          COMMENT '完整持仓JSON(年报/半年报)',
     industry_dist   JSON          COMMENT '行业分布JSON',
+    holdings_date   DATE          COMMENT '持仓数据披露日期',
     updated_at      DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_type (type),
     INDEX idx_name (name)
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS position (
     fund_code       VARCHAR(10)   NOT NULL COMMENT '基金代码',
     shares          DECIMAL(14,2) NOT NULL DEFAULT 0 COMMENT '持有份额',
     cost_amount     DECIMAL(14,2) NOT NULL DEFAULT 0 COMMENT '持仓成本(元)',
+    version         INT           DEFAULT 0 COMMENT '乐观锁版本号',
     created_at      DATETIME      DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_fund_code (fund_code),

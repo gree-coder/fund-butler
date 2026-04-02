@@ -23,21 +23,23 @@ const SearchResult: React.FC = () => {
     if (!urlKeyword) return;
     if (storeKeyword === urlKeyword && results.length > 0) return;
 
-    setLoading(true);
+    let mounted = true;
     fundApi.search(urlKeyword)
       .then((res) => {
+        if (!mounted) return;
         const list = res.list || [];
         setSearch(urlKeyword, list);
         if (list.length > 0) {
           const codes = list.map((f) => f.code);
           watchlistApi.checkExists(codes)
-            .then((existCodes) => setWatchlistSet(new Set(existCodes)))
+            .then((existCodes) => { if (mounted) setWatchlistSet(new Set(existCodes)); })
             .catch(() => {});
         }
       })
-      .catch(() => setSearch(urlKeyword, []))
-      .finally(() => setLoading(false));
-  }, [urlKeyword]);
+      .catch(() => { if (mounted) setSearch(urlKeyword, []); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [urlKeyword, storeKeyword, results.length, setSearch]);
 
   useEffect(() => {
     if (results.length > 0 && watchlistSet.size === 0) {
@@ -46,7 +48,7 @@ const SearchResult: React.FC = () => {
         .then((existCodes) => setWatchlistSet(new Set(existCodes)))
         .catch(() => {});
     }
-  }, [results]);
+  }, [results, watchlistSet.size]);
 
   const handleAddWatchlist = async (code: string, e: React.MouseEvent) => {
     e.stopPropagation();

@@ -3,7 +3,7 @@ import { Card, Tabs, Button, Popconfirm, Empty, message, Tag, Popover } from 'an
 import { StarFilled, DeleteOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { watchlistApi, type WatchlistItem } from '../../api/watchlist';
-import { formatNav, formatPercent, getProfitColor } from '../../utils/format';
+import { formatNav } from '../../utils/format';
 import PriceChange from '../../components/PriceChange';
 import PageSkeleton from '../../components/PageSkeleton';
 
@@ -16,7 +16,9 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const SCENARIO_REASONS: Record<string, string> = {
   'ETF实时': '该基金为ETF指数基金，可获取二级市场实时交易价格（精度极高），因此以ETF实时价格为主导权重。',
-  '固收类': '该基金为债券/货币型基金，股票仓位极低，重仓股估算参考价值有限，因此以机构估值（天天基金、新浪、腾讯）为主。',
+  '货币基金估值参考意义有限': '货币基金日涨幅约0.01%，波动极小，实时估值参考意义有限，建议关注七日年化收益率。',
+  '债券基金估值波动较小': '债券基金波动相对较小，机构估值较为可靠，实时估值可能存在小幅偏差。',
+  '固收类': '该基金为债券/货币型基金，股票仓位极低，重仓股估算参考价值有限，因此以机构估值为主。',
   'QDII': '该基金为QDII基金（投资海外市场），海外持仓行情获取不完整，重仓股估算可靠性较低，因此以机构估值为主。',
   '权益高覆盖': '该基金为权益类基金，重仓股持仓覆盖率较高（≥60%），重仓股实时行情估算可信度高，因此给予重仓股较高权重。',
   '权益中覆盖': '该基金为权益类基金，重仓股持仓覆盖率中等（30%-60%），估算存在一定偏差，因此适当降低重仓股权重，以机构估值为主。',
@@ -81,17 +83,22 @@ const Watchlist: React.FC = () => {
   const navigate = useNavigate();
 
   const loadData = (group?: string) => {
-    setLoading(true);
+    let mounted = true;
     watchlistApi.list(group && group !== '全部' ? group : undefined)
       .then((res) => {
+        if (!mounted) return;
         setItems(res.list || []);
         setGroups(res.groups || []);
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const cleanup = loadData();
+    return cleanup;
+  }, []);
 
   const handleRemove = async (id: number) => {
     try {

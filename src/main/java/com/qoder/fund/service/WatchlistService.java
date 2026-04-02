@@ -63,6 +63,7 @@ public class WatchlistService {
                         dto.setActualReturn(source.getEstimateReturn());
                         if (source.isDelayed()) {
                             dto.setActualReturnDelayed(true);
+                            dto.setActualNavDate(source.getDelayedDate());  // 设置延迟数据的日期
                         }
                     }
                     if ("smart".equals(source.getKey()) && source.isAvailable()) {

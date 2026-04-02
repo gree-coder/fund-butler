@@ -1,4 +1,4 @@
-# Watchlist Enhancement
+# Watchlist 增强
 
 <cite>
 **本文档引用的文件**
@@ -8,16 +8,32 @@
 - [Watchlist.java](file://src/main/java/com/qoder/fund/entity/Watchlist.java)
 - [AddWatchlistRequest.java](file://src/main/java/com/qoder/fund/dto/request/AddWatchlistRequest.java)
 - [WatchlistDTO.java](file://src/main/java/com/qoder/fund/dto/WatchlistDTO.java)
+- [EstimateSourceDTO.java](file://src/main/java/com/qoder/fund/dto/EstimateSourceDTO.java)
 - [Watchlist 组件](file://fund-web/src/pages/Watchlist/index.tsx)
 - [Watchlist API](file://fund-web/src/api/watchlist.ts)
 - [搜索栏组件](file://fund-web/src/components/SearchBar.tsx)
 - [基金详情组件](file://fund-web/src/pages/Fund/FundDetail.tsx)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
+- [EstimateWeightService.java](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java)
+- [FundEstimateCalculator.java](file://src/main/java/com/qoder/fund/service/FundEstimateCalculator.java)
+- [StockEstimateDataSource.java](file://src/main/java/com/qoder/fund/datasource/StockEstimateDataSource.java)
+- [EstimatePrediction.java](file://src/main/java/com/qoder/fund/entity/EstimatePrediction.java)
 - [schema.sql](file://src/main/resources/db/schema.sql)
 - [application.yml](file://src/main/resources/application.yml)
 - [PRD.md](file://PRD.md)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增批量检查功能，支持同时检查多个基金代码的存在性
+- 优化数据流处理，增强智能综合预估算法的准确性
+- 新增批量预同步功能，提升数据一致性
+- 增强前端智能预估展示，提供权重分析和场景解释
+- 实现自适应权重算法，基于历史准确度动态调整数据源权重
+- 新增冷启动保护机制，为新基金提供保守权重
+- 增强QDII基金延迟净值处理，提供智能预估和实际净值双重展示
+- **新增固定收益类基金场景描述优化**，明确货币市场基金的低波动特性和机构估值可靠性，以及债券基金的相对稳定特性
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -25,16 +41,20 @@
 3. [后端服务分析](#后端服务分析)
 4. [前端组件分析](#前端组件分析)
 5. [数据流分析](#数据流分析)
-6. [性能优化建议](#性能优化建议)
-7. [扩展功能建议](#扩展功能建议)
-8. [故障排除指南](#故障排除指南)
-9. [总结](#总结)
+6. [智能估值算法](#智能估值算法)
+7. [固定收益类基金场景优化](#固定收益类基金场景优化)
+8. [性能优化建议](#性能优化建议)
+9. [扩展功能建议](#扩展功能建议)
+10. [故障排除指南](#故障排除指南)
+11. [总结](#总结)
 
 ## 项目概述
 
 Watchlist（自选清单）功能是基金管理系统中的核心模块之一，为用户提供关注但未购买的基金管理能力。该功能允许用户添加感兴趣的基金到自选列表，查看基金的实时估值和历史表现，并支持分组管理。
 
 根据PRD文档，Watchlist功能属于P0级别的核心功能，必须在MVP版本中实现。该功能包括添加自选、自选列表展示、分组管理和排序筛选等核心特性。
+
+**更新** 系统现已实现全面的Watchlist API增强，包括改进的估值计算和多源数据整合，显著提升了系统的数据处理能力和用户体验。特别地，系统现已优化固定收益类基金场景描述，帮助用户更好地理解不同基金类型的估值可靠性差异。
 
 ## Watchlist 功能架构
 
@@ -54,11 +74,14 @@ end
 subgraph "业务逻辑层"
 SVC1[WatchlistService]
 SVC2[FundDataAggregator]
+SVC3[EstimateWeightService]
+SVC4[FundEstimateCalculator]
 end
 subgraph "数据访问层"
 MAP1[WatchlistMapper]
 MAP2[FundMapper]
 MAP3[FundNavMapper]
+MAP4[EstimatePredictionMapper]
 end
 subgraph "数据源"
 DS1[EastMoneyDataSource]
@@ -70,6 +93,7 @@ subgraph "数据库"
 DB1[watchlist表]
 DB2[fund表]
 DB3[fund_nav表]
+DB4[estimate_prediction表]
 end
 FE1 --> API1
 FE2 --> API2
@@ -83,14 +107,20 @@ SVC2 --> DS1
 SVC2 --> DS2
 SVC2 --> DS3
 SVC2 --> DS4
+SVC3 --> MAP4
+SVC4 --> DS1
+SVC4 --> DS2
+SVC4 --> DS3
+SVC4 --> DS4
 MAP1 --> DB1
 MAP2 --> DB2
 MAP3 --> DB3
+MAP4 --> DB4
 ```
 
 **架构图来源**
-- [WatchlistController.java:12-35](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L12-L35)
-- [WatchlistService.java:19-113](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L19-L113)
+- [WatchlistController.java:12-42](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L12-L42)
+- [WatchlistService.java:19-138](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L19-L138)
 - [FundDataAggregator.java:34-43](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L34-L43)
 
 ## 后端服务分析
@@ -106,6 +136,7 @@ class WatchlistController {
 +list(group) Result~Map~
 +add(request) Result~Void~
 +remove(id) Result~Void~
++check(codes) Result~Set~String~~
 }
 class WatchlistService {
 -WatchlistMapper watchlistMapper
@@ -114,12 +145,14 @@ class WatchlistService {
 +list(group) Map~String,Object~
 +add(fundCode, groupName) void
 +remove(id) void
++checkExists(codes) Set~String~
 }
 class WatchlistMapper {
 <<interface>>
 +selectList(wrapper) Watchlist[]
 +insert(entity) int
 +deleteById(id) int
++selectCount(wrapper) long
 }
 WatchlistController --> WatchlistService : 依赖
 WatchlistService --> WatchlistMapper : 使用
@@ -128,13 +161,13 @@ WatchlistService --> FundDataAggregator : 使用
 ```
 
 **类图来源**
-- [WatchlistController.java:15-34](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L15-L34)
+- [WatchlistController.java:15-42](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L15-L42)
 - [WatchlistService.java:22-26](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L22-L26)
 - [WatchlistMapper.java:7-9](file://src/main/java/com/qoder/fund/mapper/WatchlistMapper.java#L7-L9)
 
 ### WatchlistService 核心逻辑
 
-WatchlistService实现了自选基金的核心业务逻辑，包括数据查询、添加和删除操作：
+WatchlistService实现了自选基金的核心业务逻辑，包括数据查询、添加、删除和批量检查操作：
 
 **列表查询流程**：
 ```mermaid
@@ -159,33 +192,30 @@ GetGroups --> ReturnResult[返回结果]
 ReturnResult([结束])
 ```
 
-**添加自选流程**：
+**批量检查流程**：
 ```mermaid
 sequenceDiagram
 participant Client as 客户端
 participant Controller as WatchlistController
 participant Service as WatchlistService
-participant Aggregator as FundDataAggregator
 participant Mapper as WatchlistMapper
-Client->>Controller : POST /api/watchlist
-Controller->>Service : add(fundCode, groupName)
-Service->>Service : 验证分组名称
-Service->>Aggregator : getFundDetail(fundCode)
-Aggregator-->>Service : 返回基金详情
-Service->>Service : 检查是否已存在
-Service->>Mapper : insert(watchlist)
-Mapper-->>Service : 插入成功
-Service-->>Controller : 返回成功
-Controller-->>Client : 200 OK
+Client->>Controller : GET /api/watchlist/check?codes=000001,164818
+Controller->>Service : checkExists(codes)
+Service->>Service : 验证codes参数
+Service->>Mapper : selectList(in codes)
+Mapper-->>Service : 返回匹配记录
+Service->>Service : 转换为Set<String>
+Service-->>Controller : 返回存在的基金代码集合
+Controller-->>Client : 200 OK + Set<String>
 ```
 
-**添加自选流程图来源**
-- [WatchlistService.java:87-108](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L87-L108)
-- [WatchlistController.java:24-28](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L24-L28)
+**批量检查流程图来源**
+- [WatchlistService.java:127-136](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L127-L136)
+- [WatchlistController.java:38-41](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L38-L41)
 
 **Section sources**
-- [WatchlistController.java:15-34](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L15-L34)
-- [WatchlistService.java:28-113](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L28-L113)
+- [WatchlistController.java:15-42](file://src/main/java/com/qoder/fund/controller/WatchlistController.java#L15-L42)
+- [WatchlistService.java:28-138](file://src/main/java/com/qoder/fund/service/WatchlistService.java#L28-L138)
 - [AddWatchlistRequest.java:7-13](file://src/main/java/com/qoder/fund/dto/request/AddWatchlistRequest.java#L7-L13)
 
 ### 数据模型设计
@@ -197,11 +227,11 @@ Watchlist实体类定义了自选基金的数据结构：
 | id | Long | 主键ID | 自增 |
 | fundCode | String | 基金代码 | 非空 |
 | groupName | String | 分组名称 | 默认'默认' |
-| createdAt | LocalDateTime | 创建时间 | 自动设置 |
+| createdAt | LocalDateTime | 创建时间 | 自动设置
 
 **Section sources**
 - [Watchlist.java:12-20](file://src/main/java/com/qoder/fund/entity/Watchlist.java#L12-L20)
-- [schema.sql:69-77](file://src/main/resources/db/schema.sql#L69-L77)
+- [schema.sql:70-78](file://src/main/resources/db/schema.sql#L70-L78)
 
 ## 前端组件分析
 
@@ -229,6 +259,13 @@ class WatchlistItem {
 +estimateReturn : number
 +actualNav? : number
 +actualReturn? : number
++smartEstimateReturn? : number
++smartEstimateNav? : number
++smartStrategyType? : string
++smartDescription? : string
++smartScenario? : string
++smartWeights? : Record~string, number~
++smartAccuracyEnhanced? : boolean
 +performance : Performance
 }
 class Performance {
@@ -243,12 +280,15 @@ WatchlistItem --> Performance : 包含
 **组件功能特性**：
 - 分组标签页管理：支持按分组筛选显示
 - 实时数据展示：净值、估值、实际净值对比
+- 智能预估展示：显示智能综合预估和权重分析
 - 交互操作：添加自选、移除、查看详情
 - 性能指标：近1月、3月、1年收益展示
+- 延迟数据处理：支持QDII等延迟净值的特殊展示
+- **估值场景解释**：新增固定收益类基金场景描述，帮助用户理解不同基金类型的估值可靠性
 
 **Section sources**
-- [Watchlist 组件:9-104](file://fund-web/src/pages/Watchlist/index.tsx#L9-L104)
-- [Watchlist API:3-29](file://fund-web/src/api/watchlist.ts#L3-L29)
+- [Watchlist 组件:76-198](file://fund-web/src/pages/Watchlist/index.tsx#L76-L198)
+- [Watchlist API:28-40](file://fund-web/src/api/watchlist.ts#L28-L40)
 
 ### API 接口设计
 
@@ -259,9 +299,10 @@ WatchlistItem --> Performance : 包含
 | /api/watchlist | GET | group: string | WatchlistData | 获取自选列表 |
 | /api/watchlist | POST | AddWatchlistRequest | void | 添加自选基金 |
 | /api/watchlist/{id} | DELETE | id: number | void | 删除自选基金 |
+| /api/watchlist/check | GET | codes: string[] | string[] | 批量检查基金存在性 |
 
 **Section sources**
-- [Watchlist API:20-29](file://fund-web/src/api/watchlist.ts#L20-L29)
+- [Watchlist API:28-40](file://fund-web/src/api/watchlist.ts#L28-L40)
 
 ## 数据流分析
 
@@ -286,6 +327,24 @@ ReturnCache --> ReturnData
 ReturnData([结束])
 ```
 
+**智能综合预估算法**：
+```mermaid
+flowchart TD
+Input[输入: 基金代码, 基金类型, 覆盖率] --> CheckSources{可用数据源?}
+CheckSources --> |否| NoData[无可用数据源]
+CheckSources --> |是| BuildBaseWeights[构建基础权重]
+BuildBaseWeights --> CheckAccuracy{有历史准确度数据?}
+CheckAccuracy --> |是| CalcMultipliers[计算修正乘数]
+CheckAccuracy --> |否| SkipAccuracy[跳过准确度修正]
+CalcMultipliers --> ApplyWeights[应用权重修正]
+SkipAccuracy --> ApplyWeights
+ApplyWeights --> WeightedAvg[加权平均计算]
+WeightedAvg --> NormalizeWeights[归一化权重]
+NormalizeWeights --> Output[输出: 智能预估结果]
+NoData([结束])
+Output([结束])
+```
+
 **数据源优先级**：
 1. **主数据源**：东方财富/天天基金
 2. **备用数据源**：新浪财经、腾讯财经
@@ -293,7 +352,194 @@ ReturnData([结束])
 
 **Section sources**
 - [FundDataAggregator.java:86-106](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L86-L106)
+- [FundDataAggregator.java:542-620](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L542-L620)
 - [EastMoneyDataSource.java:184-210](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L184-L210)
+
+### 批量数据处理优化
+
+**批量预同步机制**：
+```mermaid
+sequenceDiagram
+participant Scheduler as 定时调度器
+participant Aggregator as FundDataAggregator
+participant DataSource as 东方财富数据源
+participant DB as 数据库
+Scheduler->>Aggregator : ensureTodayNavSynced(fundCodes)
+loop 对每个基金代码
+Aggregator->>DB : 检查今日净值是否存在
+Aggregator->>DataSource : 请求今日净值
+DataSource-->>Aggregator : 返回净值数据
+Aggregator->>DB : 插入净值记录
+Aggregator->>Aggregator : Thread.sleep(200ms)
+end
+Aggregator-->>Scheduler : 批量同步完成
+```
+
+**Section sources**
+- [FundDataAggregator.java:495-540](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L495-L540)
+
+## 智能估值算法
+
+### 自适应权重算法
+
+系统实现了基于历史准确度的自适应权重算法，能够根据基金类型和持仓覆盖率动态调整各数据源的权重：
+
+**权重计算流程**：
+```mermaid
+flowchart TD
+Start([开始权重计算]) --> CheckType{检查基金类型}
+CheckType --> |ETF| ETFWeights[ETF实时权重]
+CheckType --> |固收类| BondWeights[固收类权重]
+CheckType --> |QDII| QDIWeights[QDII权重]
+CheckType --> |权益类| EquityCheck[检查持仓覆盖率]
+EquityCheck --> |高覆盖| HighCoverage[高覆盖权重]
+EquityCheck --> |中覆盖| MediumCoverage[中覆盖权重]
+EquityCheck --> |低覆盖| LowCoverage[低覆盖权重]
+ETFWeights --> ColdStart{是否冷启动?}
+BondWeights --> ColdStart
+QDIWeights --> ColdStart
+HighCoverage --> ColdStart
+MediumCoverage --> ColdStart
+LowCoverage --> ColdStart
+ColdStart --> |是| Conservative[保守权重]
+ColdStart --> |否| AccuracyCheck{有历史数据?}
+AccuracyCheck --> |是| AccuracyCorrection[准确度修正]
+AccuracyCheck --> |否| BaseWeights[基础权重]
+Conservative --> FinalWeights[最终权重]
+BaseWeights --> FinalWeights
+AccuracyCorrection --> FinalWeights
+FinalWeights([结束])
+```
+
+**权重配置矩阵**：
+
+| 基金类型 | 数据源 | 冷启动权重 | 正常权重 |
+|----------|--------|------------|----------|
+| ETF实时 | eastmoney | 0.10 | 0.15 |
+| | sina | 0.05 | 0.08 |
+| | tencent | 0.05 | 0.07 |
+| | stock | 0.80 | 0.70 |
+| 固收类 | eastmoney | 0.70 | 0.45 |
+| | sina | 0.15 | 0.25 |
+| | tencent | 0.15 | 0.25 |
+| | stock | 0.00 | 0.05 |
+| QDII | eastmoney | 0.50 | 0.40 |
+| | sina | 0.25 | 0.25 |
+| | tencent | 0.25 | 0.25 |
+| | stock | 0.00 | 0.10 |
+| 权益高覆盖 | eastmoney | 0.60 | 0.30 |
+| | sina | 0.20 | 0.18 |
+| | tencent | 0.20 | 0.17 |
+| | stock | 0.00 | 0.35 |
+| 权益中覆盖 | eastmoney | 0.60 | 0.38 |
+| | sina | 0.20 | 0.24 |
+| | tencent | 0.20 | 0.23 |
+| | stock | 0.00 | 0.15 |
+| 权益低覆盖 | eastmoney | 0.60 | 0.43 |
+| | sina | 20.0 | 0.26 |
+| | tencent | 0.20 | 0.26 |
+| | stock | 0.00 | 0.05 |
+
+**准确度修正机制**：
+```mermaid
+flowchart TD
+Start([开始准确度修正]) --> CollectData[收集历史预测数据]
+CollectData --> GroupBySource[按数据源分组]
+GroupBySource --> CalcMAE[计算各源MAE]
+CalcMAE --> CheckThreshold{满足修正条件?}
+CheckThreshold --> |否| NoCorrection[不应用修正]
+CheckThreshold --> |是| CalcMultiplier[计算修正乘数]
+CalcMultiplier --> ApplyCorrection[应用权重修正]
+ApplyCorrection --> NormalizeWeights[归一化权重]
+NormalizeWeights --> End([结束])
+NoCorrection([结束])
+```
+
+**准确度修正公式**：
+- 修正乘数：`multiplier = 1 / (1 + MAE)`
+- 最终权重：`final_weight = base_weight × multiplier`
+- 权重归一化：`normalized_weight = final_weight / Σfinal_weights`
+
+**Section sources**
+- [EstimateWeightService.java:25-128](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L25-L128)
+- [EstimateWeightService.java:236-293](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L236-L293)
+
+### 冷启动保护机制
+
+系统为新基金提供冷启动保护，避免在缺乏历史数据时使用不稳定的智能预估：
+
+**冷启动判断逻辑**：
+- 新基金前5个交易日不展示智能综合预估
+- 使用单一可靠数据源（通常是天天基金）提供估值
+- 逐步建立历史数据，第6天开始启用智能预估
+
+**Section sources**
+- [EstimateWeightService.java:138-182](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L138-L182)
+
+### QDII基金特殊处理
+
+针对QDII基金的延迟净值发布特性，系统提供了特殊的处理机制：
+
+**延迟净值处理流程**：
+```mermaid
+flowchart TD
+Start([检查QDII净值]) --> TodayExists{今日实际净值存在?}
+TodayExists --> |是| ShowActual[显示今日实际净值]
+TodayExists --> |否| CheckDelay{检查延迟规则}
+CheckDelay --> |是| ShowLatest[显示最近交易日实际净值]
+CheckDelay --> |否| ShowSmart[显示智能预估]
+ShowActual --> End([结束])
+ShowLatest --> End
+ShowSmart --> End
+```
+
+**延迟展示特性**：
+- 实际净值标签显示"实际 T+1"
+- 显示延迟数据对应的净值日期
+- 提供智能预估作为当日参考
+
+**Section sources**
+- [FundDataAggregator.java:197-205](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L197-L205)
+- [FundDataAggregator.java:416-442](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L416-L442)
+
+## 固定收益类基金场景优化
+
+### 估值可靠性差异说明
+
+系统现已优化固定收益类基金场景描述，帮助用户理解不同基金类型的估值可靠性差异：
+
+**货币市场基金特性**：
+- 日涨幅极小（约0.01%），波动性极低
+- 估值参考意义有限，建议关注七日年化收益率而非日净值变化
+- 适合稳健型投资者的短期资金配置
+
+**债券基金特性**：
+- 波动性相对较小，估值较为稳定
+- 机构估值相对可靠，实时估值可能存在小幅偏差
+- 适合追求稳定收益的投资者
+
+**固收类基金权重配置**：
+- 以机构估值为主（天天基金等官方数据源）
+- 降低股票估算权重（通常为0.05）
+- 优先保证估值的稳定性和可靠性
+
+**Section sources**
+- [EstimateWeightService.java:99-102](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L99-L102)
+- [EstimateWeightService.java:307-309](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L307-L309)
+- [FundDataAggregator.java:605-610](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L605-L610)
+
+### 前端场景解释增强
+
+前端Watchlist组件现已提供更详细的场景解释，帮助用户理解智能预估的决策逻辑：
+
+**场景解释映射**：
+- `货币基金估值参考意义有限`：解释货币基金的低波动特性
+- `债券基金估值波动较小`：说明债券基金的稳定性
+- `固收类`：概括固收类基金的整体特征
+- `QDII`：解释QDII基金的特殊估值挑战
+
+**Section sources**
+- [Watchlist 组件:17-26](file://fund-web/src/pages/Watchlist/index.tsx#L17-L26)
 
 ## 性能优化建议
 
@@ -310,12 +556,14 @@ ReturnData([结束])
 1. **索引优化**：确保watchlist表的group_name字段有索引
 2. **分页查询**：对于大量数据时实现分页加载
 3. **批量查询**：优化多基金数据的批量获取
+4. **批量检查优化**：使用IN查询替代多次单点查询
 
 ### 前端性能优化
 
 1. **虚拟滚动**：对于大量自选基金使用虚拟滚动
 2. **懒加载**：延迟加载非关键资源
 3. **数据压缩**：启用Gzip压缩减少传输体积
+4. **智能预估缓存**：前端缓存智能预估结果
 
 ## 扩展功能建议
 
@@ -337,6 +585,12 @@ ReturnData([结束])
 2. **风险评估**：基于历史波动率的风险评估
 3. **投资建议**：基于机器学习的智能推荐
 
+### 批量操作功能
+
+1. **批量添加**：支持一次添加多个基金到自选列表
+2. **批量删除**：支持批量移除自选基金
+3. **批量检查优化**：提供更高效的批量检查API
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
@@ -355,6 +609,21 @@ ReturnData([结束])
 - 检查服务器资源使用情况
 - 优化数据库查询语句
 - 启用缓存机制
+
+**问题4：批量检查功能异常**
+- 验证codes参数格式
+- 检查数据库连接
+- 确认IN查询语法正确
+
+**问题5：智能预估不准确**
+- 检查历史数据是否充足
+- 验证数据源可用性
+- 确认权重配置正确
+
+**问题6：固定收益类基金估值理解困难**
+- 查看前端场景解释说明
+- 关注七日年化收益率而非日净值变化
+- 了解固收类基金的稳定性特征
 
 ### 错误处理机制
 
@@ -381,10 +650,36 @@ ReturnSuccess([结束])
 
 Watchlist功能作为基金管理系统的核心模块，实现了完整的自选基金管理能力。通过前后端分离的设计，采用RESTful API接口，结合多数据源聚合的技术，为用户提供了稳定可靠的自选基金管理体验。
 
-系统的主要优势包括：
-- **完整的功能覆盖**：支持添加、删除、分组、查询等核心功能
-- **多数据源保障**：通过多个数据源确保数据的准确性和可靠性
-- **良好的用户体验**：直观的界面设计和流畅的操作体验
+**更新** 系统现已具备以下增强功能：
+
+### 核心功能增强
+- **批量检查功能**：支持同时检查多个基金代码的存在性，显著提升批量操作效率
+- **智能预估算法**：基于自适应权重和历史准确度修正，提供更精准的估值预测
+- **批量数据同步**：优化数据一致性，减少API限流影响
+- **权重可视化展示**：前端提供智能预估的权重分析和场景解释
+- **冷启动保护**：为新基金提供保守权重，避免早期不稳定预估
+- **QDII延迟处理**：智能处理延迟净值，提供实际和预估双重展示
+- **固定收益类基金场景优化**：明确货币市场基金的低波动特性和机构估值可靠性，以及债券基金的相对稳定特性
+
+### 技术架构优化
+- **多数据源聚合**：通过多个数据源确保数据的准确性和可靠性
+- **智能缓存策略**：多层次缓存机制提升系统性能
+- **自适应权重算法**：根据不同基金类型和持仓覆盖率动态调整权重
+- **历史准确度追踪**：基于预测误差(MAE)动态修正权重
+- **熔断保护机制**：防止数据源故障影响整体系统稳定性
+
+### 用户体验提升
+- **直观的界面设计**：清晰展示智能预估结果和权重构成
+- **流畅的操作体验**：优化的批量操作和数据同步机制
 - **可扩展性强**：模块化设计便于后续功能扩展
+- **延迟数据透明化**：QDII等延迟净值的特殊处理和展示
+- **估值场景解释**：帮助用户理解不同基金类型的估值可靠性差异
+
+### 技术创新亮点
+- **自适应权重系统**：基于机器学习的历史数据分析，持续优化权重分配
+- **多场景权重配置**：针对ETF、固收类、QDII、权益类等不同场景的专门权重设计
+- **准确度修正机制**：通过估计误差(MAE)动态调整数据源权重，提升预测准确性
+- **冷启动保护**：为新基金提供安全的估值策略，避免早期数据不足的影响
+- **固定收益类基金专业化**：针对货币市场基金和债券基金的特殊估值策略
 
 未来可以考虑增加更多智能化功能，如基于AI的投资建议、个性化提醒等，进一步提升用户体验和产品价值。

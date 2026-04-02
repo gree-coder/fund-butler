@@ -8,8 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @MapperScan("com.qoder.fund.mapper")
 public class FundApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(FundApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(FundApplication.class, args);
+    }
 
 }

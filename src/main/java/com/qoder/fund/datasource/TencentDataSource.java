@@ -21,9 +21,13 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class TencentDataSource {
 
-    private final OkHttpClient httpClient;
+    private static final String SOURCE_NAME = "tencent";
 
-    public TencentDataSource() {
+    private final OkHttpClient httpClient;
+    private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
+
+    public TencentDataSource(com.qoder.fund.config.CircuitBreaker circuitBreaker) {
+        this.circuitBreaker = circuitBreaker;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -34,6 +38,12 @@ public class TencentDataSource {
      * 获取腾讯财经的基金实时估值
      */
     public Map<String, Object> getEstimateNav(String fundCode) {
+        // 熔断检查
+        if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+            log.warn("腾讯数据源已熔断，跳过请求: {}", fundCode);
+            return Collections.emptyMap();
+        }
+
         try {
             String url = "https://qt.gtimg.cn/q=jj" + fundCode;
 
@@ -45,11 +55,13 @@ public class TencentDataSource {
 
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
+                    circuitBreaker.recordFailure(SOURCE_NAME);
                     return Collections.emptyMap();
                 }
 
                 String body = response.body().string();
                 if (body == null || body.isEmpty()) {
+                    circuitBreaker.recordFailure(SOURCE_NAME);
                     return Collections.emptyMap();
                 }
 
@@ -57,6 +69,7 @@ public class TencentDataSource {
                 int quoteStart = body.indexOf('"');
                 int quoteEnd = body.lastIndexOf('"');
                 if (quoteStart < 0 || quoteEnd <= quoteStart) {
+                    circuitBreaker.recordFailure(SOURCE_NAME);
                     return Collections.emptyMap();
                 }
 
@@ -66,6 +79,7 @@ public class TencentDataSource {
                 // 至少需要9个字段
                 if (parts.length < 9) {
                     log.warn("腾讯基金数据字段不足: code={}, fields={}", fundCode, parts.length);
+                    circuitBreaker.recordFailure(SOURCE_NAME);
                     return Collections.emptyMap();
                 }
 
@@ -74,8 +88,12 @@ public class TencentDataSource {
                 BigDecimal estimateReturn = parseBigDecimal(parts[3]);
 
                 if (estimateNav.compareTo(BigDecimal.ZERO) <= 0) {
+                    circuitBreaker.recordFailure(SOURCE_NAME);
                     return Collections.emptyMap();
                 }
+
+                // 记录成功
+                circuitBreaker.recordSuccess(SOURCE_NAME);
 
                 String navDate = parts.length > 8 ? parts[8].trim() : "";
 
@@ -89,6 +107,7 @@ public class TencentDataSource {
             }
         } catch (Exception e) {
             log.warn("腾讯财经估值获取失败: code={}", fundCode, e);
+            circuitBreaker.recordFailure(SOURCE_NAME);
             return Collections.emptyMap();
         }
     }

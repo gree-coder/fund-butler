@@ -12,7 +12,11 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -23,13 +27,18 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class StockEstimateDataSource {
 
+    private static final String SOURCE_NAME = "stock";
+
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final FundMapper fundMapper;
+    private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
 
-    public StockEstimateDataSource(ObjectMapper objectMapper, FundMapper fundMapper) {
+    public StockEstimateDataSource(ObjectMapper objectMapper, FundMapper fundMapper,
+                                   com.qoder.fund.config.CircuitBreaker circuitBreaker) {
         this.objectMapper = objectMapper;
         this.fundMapper = fundMapper;
+        this.circuitBreaker = circuitBreaker;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -42,10 +51,17 @@ public class StockEstimateDataSource {
      * 优先使用完整持仓（年报/半年报），降级到十大重仓股
      */
     public Map<String, Object> estimateByStocks(String fundCode, BigDecimal lastNav) {
+        // 熔断检查
+        if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+            log.warn("股票估值数据源已熔断，跳过请求: {}", fundCode);
+            return Collections.emptyMap();
+        }
+
         // ETF基金直接使用二级市场实时价格
         if (isEtf(fundCode)) {
             Map<String, Object> etfResult = estimateByEtfPrice(fundCode, lastNav);
             if (!etfResult.isEmpty()) {
+                circuitBreaker.recordSuccess(SOURCE_NAME);
                 return etfResult;
             }
             log.warn("ETF实时价格获取失败，降级到重仓股估算: {}", fundCode);
@@ -57,6 +73,7 @@ public class StockEstimateDataSource {
             Fund fund = fundMapper.selectById(fundCode);
             if (fund == null) {
                 log.warn("基金数据不存在: {}", fundCode);
+                circuitBreaker.recordFailure(SOURCE_NAME);
                 return result;
             }
 
@@ -74,29 +91,52 @@ public class StockEstimateDataSource {
 
             if (holdings == null || holdings.isEmpty()) {
                 log.warn("基金持仓数据不存在: {}", fundCode);
+                circuitBreaker.recordFailure(SOURCE_NAME);
                 return result;
             }
 
-            // 2. 提取股票代码 (仅A股，跳过港股等非A股)
+            // 2. 提取股票代码 (A股+港股，跳过美股等非港股通标的)
             List<String> stockCodes = new ArrayList<>();
             Map<String, BigDecimal> ratioMap = new HashMap<>();
+            int skippedHkStock = 0;
+            int skippedOther = 0;
+            BigDecimal totalHoldingsRatio = BigDecimal.ZERO; // 总持仓比例
+            BigDecimal skippedOtherRatio = BigDecimal.ZERO;  // 跳过的非港股通比例
+
             for (Map<String, Object> h : holdings) {
                 String stockCode = String.valueOf(h.get("stockCode"));
                 BigDecimal ratio = toBigDecimal(h.get("ratio"));
                 if (stockCode == null || stockCode.isEmpty() || ratio.compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
                 }
+                totalHoldingsRatio = totalHoldingsRatio.add(ratio);
 
                 String formattedCode = formatStockCode(stockCode);
                 if (formattedCode.isEmpty()) {
-                    log.debug("跳过非A股: code={}, fund={}", stockCode, fundCode);
+                    // 区分是港股还是其他市场（如美股）
+                    if (isHongKongStock(stockCode)) {
+                        // 港股但格式化失败（异常情况）
+                        log.warn("港股代码格式化失败: code={}, fund={}", stockCode, fundCode);
+                    } else {
+                        // 非港股通标的（美股、日股等），记录跳过比例
+                        skippedOther++;
+                        skippedOtherRatio = skippedOtherRatio.add(ratio);
+                    }
                     continue;
                 }
                 stockCodes.add(formattedCode);
                 ratioMap.put(formattedCode, ratio);
             }
 
-            if (stockCodes.isEmpty()) return result;
+            if (skippedOther > 0) {
+                log.debug("基金{}包含{}只非港股通持仓(美股/日股等)，占比{:.2f}%，已跳过",
+                        fundCode, skippedOther, skippedOtherRatio);
+            }
+
+            if (stockCodes.isEmpty()) {
+                circuitBreaker.recordFailure(SOURCE_NAME);
+                return result;
+            }
 
             // 3. 获取股票实时行情（分批请求，每批50只）
             Map<String, BigDecimal> stockReturns = fetchStockReturnsBatched(stockCodes);
@@ -124,10 +164,28 @@ public class StockEstimateDataSource {
                 result.put("estimateReturn", estimateReturn);
                 result.put("source", "stock_estimate");
                 result.put("coverageRatio", totalRatio);
-                log.info("股票估值: fund={}, return={}, coverage={}%, holdings={}", fundCode, estimateReturn, totalRatio, holdingsSource);
+                // 有效覆盖率 = 实际获取行情的比例 / (总持仓比例 - 非港股通比例)
+                // 这里 totalRatio 就是可以获取行情的持仓比例
+                // 有效覆盖率相对于总持仓来计算
+                if (totalHoldingsRatio.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal effectiveCoverage = totalRatio.divide(totalHoldingsRatio, 4, RoundingMode.HALF_UP)
+                            .multiply(new BigDecimal("100"));
+                    result.put("effectiveCoverageRatio", effectiveCoverage);
+                    result.put("skippedOtherRatio", skippedOtherRatio);
+                    result.put("skippedOtherCount", skippedOther);
+                }
+                log.info("股票估值: fund={}, return={}, coverage={}%, effectiveCoverage={}%, skippedOther={}只({}%)",
+                        fundCode, estimateReturn, totalRatio,
+                        result.get("effectiveCoverageRatio"), skippedOther, skippedOtherRatio);
+
+                // 记录成功
+                circuitBreaker.recordSuccess(SOURCE_NAME);
+            } else {
+                circuitBreaker.recordFailure(SOURCE_NAME);
             }
         } catch (Exception e) {
             log.error("股票估值失败: fund={}", fundCode, e);
+            circuitBreaker.recordFailure(SOURCE_NAME);
         }
         return result;
     }
@@ -273,7 +331,7 @@ public class StockEstimateDataSource {
      * 沪A: 1.600519 (6开头, 6位数字)
      * 深A: 0.300170 (0/3开头, 6位数字)
      * 科创板: 1.688xxx (6开头, 6位数字)
-     * 港股: 116.00700 (4-5位数字)
+     * 港股: 支持港股通格式
      */
     private String formatStockCode(String code) {
         if (code == null) return "";
@@ -293,12 +351,30 @@ public class StockEstimateDataSource {
             if (code.startsWith("0") || code.startsWith("3")) return "0." + code;  // 深市
         }
 
-        // 港股: 4-5位数字 (如 00700, 09988, 01179, 3690)
+        // 港股: 4-5位数字，东财港股格式为 116.xxx
+        // 港股通标的包括腾讯(00700)、阿里(09988)、美团(03690)等
         if (code.length() == 4 || code.length() == 5) {
+            // 港股代码以0开头的是主板，以6/8开头的是创业板/ gem
+            // 常见港股: 00700(腾讯), 09988(阿里), 03690(美团), 01898(中芯), 01179(华住)
             return "116." + code;
         }
 
         return "";
+    }
+
+    /**
+     * 判断是否为港股代码
+     * 港股为4-5位数字，且不在A股范围内
+     */
+    private boolean isHongKongStock(String code) {
+        if (code == null) return false;
+        code = code.trim();
+        if (code.startsWith("HK")) {
+            code = code.substring(2);
+        }
+        if (!code.matches("\\d+")) return false;
+        // 港股为4-5位，A股为6位
+        return code.length() == 4 || code.length() == 5;
     }
 
     private BigDecimal toBigDecimal(Object value) {
