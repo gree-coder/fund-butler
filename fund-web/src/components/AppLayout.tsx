@@ -41,10 +41,10 @@ const AppLayout: React.FC = () => {
   const selectedKey = location.pathname.startsWith('/fund/')
     ? '/search'
     : menuItems.find((item) =>
-        item.key === '/'
-          ? location.pathname === '/'
-          : location.pathname.startsWith(item.key),
-      )?.key || '/';
+      item.key === '/'
+        ? location.pathname === '/'
+        : location.pathname.startsWith(item.key),
+    )?.key || '/';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

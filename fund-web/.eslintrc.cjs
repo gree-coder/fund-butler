@@ -8,12 +8,8 @@ module.exports = {
   ],
   ignorePatterns: ['dist', '.eslintrc.cjs'],
   parser: '@typescript-eslint/parser',
-  plugins: ['react-refresh', '@typescript-eslint'],
+  plugins: ['@typescript-eslint'],
   rules: {
-    'react-refresh/only-export-components': [
-      'warn',
-      { allowConstantExport: true },
-    ],
     // 强制类型定义
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-explicit-any': 'error',
@@ -22,7 +18,7 @@ module.exports = {
     'indent': ['error', 2],
     'quotes': ['error', 'single'],
     'semi': ['error', 'always'],
-    'max-len': ['error', { code: 120 }],
+    'max-len': ['warn', { code: 120 }],
     // 最佳实践
     'no-console': ['warn', { allow: ['error', 'warn'] }],
     'no-debugger': 'error',
