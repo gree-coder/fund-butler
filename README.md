@@ -26,6 +26,7 @@
 
 - **纯工具属性**：不做交易，不接触用户资金，零风险使用
 - **Web 优先**：无需下载 App，浏览器直接使用，跨设备同步
+- **CLI 支持**：命令行工具，支持定时任务和数据同步
 - **数据聚合**：汇总多平台持仓，一屏掌握投资全貌
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
 - **实时估值**：多数据源实时估值，交易日盘中动态更新
@@ -44,6 +45,7 @@
 - [x] **多账户管理** - 支持创建多个账户（支付宝、天天基金等）
 - [x] **实时估值** - 多数据源估值聚合，智能权重算法
 - [x] **资产配置** - 按基金类型展示资产分布饼图
+- [x] **CLI 工具** - 命令行接口，支持定时任务和数据同步
 
 ### 进行中功能
 
@@ -67,6 +69,7 @@
 | Caffeine | - | 本地缓存 |
 | OkHttp | 4.12.0 | HTTP 客户端 |
 | Lombok | - | 代码简化 |
+| Picocli | 4.7.5 | CLI 框架 |
 
 ### 前端
 
@@ -140,6 +143,31 @@ cd fund-web
 npm run build
 ```
 
+### CLI 工具使用
+
+```bash
+# 构建 CLI JAR
+./mvnw clean package -DskipTests
+
+# 查看帮助
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar
+
+# 基金查询
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar fund search 白酒
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar fund detail 161725
+
+# 持仓管理
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar position list
+
+# 数据同步（用于定时任务）
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync nav          # 同步净值
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync estimate     # 快照估值
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync all          # 全部同步
+
+# 或使用脚本
+./scripts/fund-cli fund search 白酒
+```
+
 ---
 
 ## 项目结构
@@ -154,7 +182,8 @@ fund/
 │   ├── dto/                         # 数据传输对象
 │   ├── config/                      # 配置类
 │   ├── datasource/                  # 数据源（多源估值）
-│   └── scheduler/                   # 定时任务
+│   ├── scheduler/                   # 定时任务
+│   └── cli/                         # CLI 命令行工具
 ├── src/main/resources/
 │   ├── db/                          # 数据库脚本
 │   │   ├── schema.sql               # 表结构

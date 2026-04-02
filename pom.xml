@@ -84,6 +84,18 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!-- CLI -->
+		<dependency>
+			<groupId>info.picocli</groupId>
+			<artifactId>picocli</artifactId>
+			<version>4.7.5</version>
+		</dependency>
+		<dependency>
+			<groupId>info.picocli</groupId>
+			<artifactId>picocli-spring-boot-starter</artifactId>
+			<version>4.7.5</version>
+		</dependency>
+
 		<!-- Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -98,6 +110,8 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
+					<mainClass>com.qoder.fund.FundApplication</mainClass>
+					<classifier>web</classifier>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>
@@ -105,6 +119,23 @@
 						</exclude>
 					</excludes>
 				</configuration>
+			</plugin>
+			<!-- CLI 打包插件 -->
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<mainClass>com.qoder.fund.cli.FundCliApplication</mainClass>
+					<classifier>cli</classifier>
+				</configuration>
+				<executions>
+					<execution>
+						<id>repackage-cli</id>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 			<!-- Checkstyle 插件 -->
 			<plugin>

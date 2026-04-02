@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+# 基金管家 CLI 启动脚本
+# 
+# 使用方法:
+#   ./fund-cli <command> [options]
+#   ./fund-cli --web              # 启动 Web 服务器
+#
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# JAR 文件路径 (使用 CLI 专用 JAR)
+JAR_FILE="$PROJECT_DIR/target/fund-0.0.1-SNAPSHOT-cli.jar"
+
+# 检查 JAR 文件是否存在
+if [ ! -f "$JAR_FILE" ]; then
+    echo "错误: 找不到 CLI JAR 文件: $JAR_FILE"
+    echo "请先构建项目: ./mvnw clean package"
+    exit 1
+fi
+
+# 执行命令
+exec java -jar "$JAR_FILE" "$@"

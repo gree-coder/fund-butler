@@ -8,7 +8,8 @@
 
 - **后端**：Spring Boot 3.4.3 + Java 17 + MyBatis-Plus + MySQL
 - **前端**：React 18 + TypeScript + Vite + Ant Design 5 + ECharts 5
-- **架构**：前后端分离，RESTful API
+- **CLI**：Picocli 4.7.5 + Spring Boot 命令行模式
+- **架构**：前后端分离，RESTful API，支持 Web + CLI 双模式
 
 ## 快速导航
 
@@ -70,7 +71,11 @@
 ```bash
 # 后端构建
 ./mvnw clean test          # 运行测试
-./mvnw spring-boot:run     # 本地启动
+./mvnw spring-boot:run     # 本地启动 Web 服务
+
+# CLI 构建与使用
+./mvnw clean package       # 构建 CLI JAR
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar  # 运行 CLI
 
 # 前端构建
 cd fund-web
@@ -127,4 +132,4 @@ npm run lint               # 代码检查
 
 ---
 
-*最后更新: 2026-04-01*
+*最后更新: 2026-04-02*

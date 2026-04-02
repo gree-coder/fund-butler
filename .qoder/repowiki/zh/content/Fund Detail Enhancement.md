@@ -5,10 +5,15 @@
 - [PRD.md](file://PRD.md)
 - [application.yml](file://src/main/resources/application.yml)
 - [FundDetail.tsx](file://fund-web/src/pages/Fund/FundDetail.tsx)
+- [EstimateAnalysisTab.tsx](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx)
+- [estimateAnalysis.ts](file://fund-web/src/api/estimateAnalysis.ts)
 - [AppLayout.tsx](file://fund-web/src/components/AppLayout.tsx)
 - [SearchResult.tsx](file://fund-web/src/pages/Fund/SearchResult.tsx)
 - [App.tsx](file://fund-web/src/App.tsx)
 - [FundController.java](file://src/main/java/com/qoder/fund/controller/FundController.java)
+- [EstimateAnalysisService.java](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java)
+- [EstimateAnalysisDTO.java](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java)
+- [EstimatePredictionMapper.java](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java)
 - [FundService.java](file://src/main/java/com/qoder/fund/service/FundService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
@@ -34,6 +39,8 @@
 - 增强了十大重仓股和行业分布的数据展示
 - 优化了导航持久性功能，改善用户浏览体验
 - 新增了板块涨跌幅显示功能
+- **新增数据源分析标签页**：集成EstimateAnalysisTab组件，提供详细的数据源分析功能
+- **增强数据分析能力**：支持数据源准确度统计、可信度评估和补偿记录追踪
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -58,6 +65,7 @@
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
 - **导航持久性**：增强的路径跟踪机制，改善用户浏览体验
 - **智能估值**：多数据源估值切换，支持智能综合预估
+- **数据源分析**：详细的数据源准确度分析和可信度评估
 
 ### 技术架构
 
@@ -105,8 +113,8 @@ BE_MAPPER --> DB_NAV
 
 **图表来源**
 - [AppLayout.tsx:1-127](file://fund-web/src/components/AppLayout.tsx#L1-L127)
-- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
-- [FundController.java:1-67](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L67)
+- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
+- [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
 - [FundDataAggregator.java:1-693](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L693)
 
 **章节来源**
@@ -135,6 +143,16 @@ BE_MAPPER --> DB_NAV
 - **板块涨跌幅**：显示关联板块今日涨幅，帮助用户了解市场环境
 - **快速操作**：添加自选、加持仓、刷新数据等功能，支持实时数据更新
 - **数据标签**：显示数据截止日期和延迟提示，确保用户了解数据时效性
+- **数据源分析标签**：新增"数据源分析"标签页，提供详细的数据源准确度分析
+
+#### EstimateAnalysisTab组件
+**新增组件**：专门用于数据源分析的标签页组件，提供以下功能：
+
+- **实时估值对比**：展示各数据源的实时估值和当前权重
+- **准确度统计**：基于历史数据计算的平均误差、命中率和趋势分析
+- **可信度评估**：基于历史准确度计算的数据源可信度评分
+- **补偿记录追踪**：显示预测数据补偿和实际净值发布的记录
+- **智能综合预估**：展示智能综合预估的详细信息和权重分布
 
 #### 基金搜索结果页面 (SearchResult)
 基金搜索结果页面提供基金搜索和结果展示功能：
@@ -156,6 +174,7 @@ BE_MAPPER --> DB_NAV
 - 净值历史查询接口
 - 实时估值获取接口
 - 数据刷新接口
+- **数据源分析接口**：`/api/fund/{code}/estimate-analysis`
 
 ### 后端核心组件
 
@@ -166,6 +185,7 @@ RESTful API控制器提供标准的HTTP接口：
 - `GET /api/fund/{code}/nav-history` - 净值历史
 - `GET /api/fund/{code}/estimates` - 实时估值
 - `POST /api/fund/{code}/refresh` - 数据刷新
+- **新增** `GET /api/fund/{code}/estimate-analysis` - 数据源分析
 
 #### 服务层
 FundService作为业务逻辑核心，协调各个数据源：
@@ -175,6 +195,12 @@ FundService作为业务逻辑核心，协调各个数据源：
 - 多源估值整合
 - 数据刷新机制
 
+**新增** EstimateAnalysisService提供数据源分析功能：
+- 实时估值数据构建
+- 准确度统计计算
+- 可信度评估
+- 补偿记录追踪
+
 #### 数据源聚合器
 FundDataAggregator实现多数据源聚合和降级策略：
 - 主数据源：天天基金API
@@ -182,11 +208,19 @@ FundDataAggregator实现多数据源聚合和降级策略：
 - 兜底机制：基于重仓股的智能估算
 - 缓存策略：多级缓存优化性能
 
+#### 数据访问层
+**新增** 数据访问层支持数据分析功能：
+- EstimatePredictionMapper：处理估值预测准确度数据
+- FundNavMapper：处理净值历史数据
+- 支持复杂的统计查询和趋势分析
+
 **章节来源**
 - [AppLayout.tsx:1-127](file://fund-web/src/components/AppLayout.tsx#L1-L127)
-- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
+- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
+- [EstimateAnalysisTab.tsx:1-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L331)
 - [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
-- [FundController.java:1-67](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L67)
+- [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
+- [EstimateAnalysisService.java:1-305](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L1-L305)
 - [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
 - [FundDataAggregator.java:1-693](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L693)
 
@@ -198,6 +232,7 @@ participant Client as 客户端
 participant Layout as AppLayout导航
 participant Controller as 基金控制器
 participant Service as 基金服务
+participant AnalysisService as 数据分析服务
 participant Aggregator as 数据聚合器
 participant EastMoney as 东方财富数据源
 participant StockEstimate as 股票估算数据源
@@ -221,7 +256,7 @@ Controller-->>Client : JSON响应
 
 **图表来源**
 - [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
-- [FundController.java:38-44](file://src/main/java/com/qoder/fund/controller/FundController.java#L38-L44)
+- [FundController.java:40-46](file://src/main/java/com/qoder/fund/controller/FundController.java#L40-L46)
 - [FundService.java:33-35](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L35)
 - [FundDataAggregator.java:68-95](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L68-L95)
 
@@ -246,6 +281,37 @@ K --> L[用户浏览体验]
 **图表来源**
 - [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
 - [AppLayout.tsx:41-48](file://fund-web/src/components/AppLayout.tsx#L41-L48)
+
+### 数据源分析架构
+
+```mermaid
+sequenceDiagram
+participant Client as 客户端
+participant Controller as 基金控制器
+participant AnalysisService as 数据分析服务
+participant Mapper as 数据访问层
+participant PredictionDB as 预测数据表
+participant NavDB as 净值数据表
+Client->>Controller : GET /api/fund/{code}/estimate-analysis
+Controller->>AnalysisService : getEstimateAnalysis(code)
+AnalysisService->>AnalysisService : 构建实时估值数据
+AnalysisService->>Mapper : 查询准确度统计
+Mapper->>PredictionDB : getAccuracyStats()
+PredictionDB-->>Mapper : 统计结果
+AnalysisService->>Mapper : 查询MAE数据
+Mapper->>PredictionDB : getMaeInPeriod()
+PredictionDB-->>Mapper : MAE结果
+AnalysisService->>Mapper : 查询补偿记录
+Mapper->>NavDB : 查询净值数据
+NavDB-->>Mapper : 净值记录
+AnalysisService-->>Controller : EstimateAnalysisDTO
+Controller-->>Client : JSON响应
+```
+
+**图表来源**
+- [FundController.java:70-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L70-L77)
+- [EstimateAnalysisService.java:42-62](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L42-62)
+- [EstimatePredictionMapper.java:20-31](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java#L20-31)
 
 ## 详细组件分析
 
@@ -367,7 +433,7 @@ FundDetailDTO --> EstimateItem : "包含"
 ```
 
 **图表来源**
-- [FundDetail.tsx:21-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L21-L342)
+- [FundDetail.tsx:21-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L21-L362)
 - [fund.ts:9-65](file://fund-web/src/api/fund.ts#L9-L65)
 
 #### 数据获取流程优化
@@ -431,55 +497,117 @@ API-->>Page : 返回数据
    - 动态颜色标识涨跌状态
    - 悬停缩放效果，提升交互体验
 
+6. **数据源分析标签**：
+   - 新增"数据源分析"标签页
+   - 展示实时数据源对比
+   - 提供准确度统计和可信度评估
+   - 显示补偿记录追踪
+
 **章节来源**
-- [FundDetail.tsx:1-342](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L342)
+- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
 - [fund.ts:67-83](file://fund-web/src/api/fund.ts#L67-L83)
 
-### 基金搜索结果组件分析
+### EstimateAnalysisTab组件分析
 
-#### 搜索状态管理
+#### 组件结构设计
 ```mermaid
-stateDiagram-v2
-[*] --> Idle
-Idle --> Searching : 用户输入关键词
-Searching --> Loading : 发起API请求
-Loading --> Loaded : 获取搜索结果
-Loaded --> Idle : 用户继续搜索
-Loaded --> DetailView : 点击查看详情
-DetailView --> Searching : 返回搜索结果
-Searching --> Empty : 无搜索结果
-Empty --> Idle : 清空关键词
+classDiagram
+class EstimateAnalysisTab {
++string fundCode
++EstimateAnalysisData data
++boolean loading
++useEffect() loadData()
++renderCurrentEstimates() Card
++renderSourceComparison() Table
++renderAccuracyStats() Table
++renderCompensationLogs() Table
+}
+class EstimateAnalysisData {
++string fundCode
++string fundName
++CurrentEstimate currentEstimates
++AccuracyStats accuracyStats
++CompensationLog[] compensationLogs
+}
+class CurrentEstimate {
++number actualNav
++number actualReturn
++string actualNavDate
++boolean actualReturnDelayed
++SourceEstimate[] sources
++SmartEstimate smartEstimate
+}
+class SourceEstimate {
++string key
++string label
++number estimateNav
++number estimateReturn
++boolean available
++number weight
++number confidence
++string description
+}
+class SmartEstimate {
++number nav
++number returnRate
++string strategy
++string scenario
++boolean accuracyEnhanced
++Map weights
++string description
+}
+EstimateAnalysisTab --> EstimateAnalysisData : "使用"
+EstimateAnalysisData --> CurrentEstimate : "包含"
+CurrentEstimate --> SourceEstimate : "包含"
+CurrentEstimate --> SmartEstimate : "包含"
 ```
 
 **图表来源**
-- [SearchResult.tsx:20-32](file://fund-web/src/pages/Fund/SearchResult.tsx#L20-L32)
-- [searchStore.ts:10-14](file://fund-web/src/store/searchStore.ts#L10-L14)
+- [EstimateAnalysisTab.tsx:11-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L11-L331)
+- [estimateAnalysis.ts:3-71](file://fund-web/src/api/estimateAnalysis.ts#L3-L71)
 
-#### 搜索流程优化
+#### 数据分析功能实现
 ```mermaid
 flowchart TD
-A[用户输入关键词] --> B{URL参数存在?}
-B --> |是| C[使用URL关键词]
-B --> |否| D[使用状态存储关键词]
-C --> E{关键词变化?}
-D --> E
-E --> |是| F[发起搜索请求]
-E --> |否| G[使用缓存结果]
-F --> H[更新搜索状态]
-G --> I[渲染搜索结果]
-H --> I
-I --> J[用户操作]
-J --> K[跳转到详情页]
-K --> L[导航持久化]
+A[用户访问数据源分析] --> B[加载分析数据]
+B --> C[构建实时估值数据]
+C --> D[查询准确度统计]
+D --> E[计算可信度评分]
+E --> F[查询补偿记录]
+F --> G[渲染分析界面]
+G --> H[用户查看分析结果]
 ```
 
 **图表来源**
-- [SearchResult.tsx:11-32](file://fund-web/src/pages/Fund/SearchResult.tsx#L11-L32)
-- [AppLayout.tsx:33-40](file://fund-web/src/components/AppLayout.tsx#L33-L40)
+- [EstimateAnalysisTab.tsx:15-28](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L15-L28)
+- [EstimateAnalysisService.java:67-139](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L67-139)
+
+#### 分析功能详解
+
+1. **实时估值对比**：
+   - 展示各数据源的实时估值和当前权重
+   - 提供数据源可用性状态显示
+   - 支持可信度评分展示
+
+2. **准确度统计**：
+   - 基于历史预测数据计算平均误差(MAE)
+   - 统计命中率（误差小于0.5%的比例）
+   - 计算数据源评级（1-5星）
+   - 分析趋势变化（提升/稳定/下降）
+
+3. **可信度评估**：
+   - 基于历史准确度计算可信度评分
+   - 0-1范围的数值表示，数值越大越可信
+   - 动态调整权重分配
+
+4. **补偿记录追踪**：
+   - 显示预测数据补偿历史
+   - 区分预测补偿和实际净值发布
+   - 提供详细的补偿说明
 
 **章节来源**
-- [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
-- [searchStore.ts:1-15](file://fund-web/src/store/searchStore.ts#L1-L15)
+- [EstimateAnalysisTab.tsx:1-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L331)
+- [EstimateAnalysisDTO.java:1-148](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java#L1-L148)
 
 ### 数据聚合器组件分析
 
@@ -631,17 +759,30 @@ decimal cost_amount
 datetime created_at
 datetime updated_at
 }
+ESTIMATE_PREDICTION {
+bigint id PK
+varchar fund_code FK
+varchar source_key
+date predict_date
+decimal predicted_nav
+decimal predicted_return
+decimal actual_nav
+decimal actual_return
+decimal return_error
+unique uk_fund_source_date
+}
 FUND_NAV ||--|| FUND : "fund_code"
 POSITION }|--|| FUND : "fund_code"
+ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 ```
 
 **图表来源**
-- [schema.sql:1-93](file://src/main/resources/db/schema.sql#L1-L93)
+- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
 - [Fund.java:1-42](file://src/main/java/com/qoder/fund/entity/Fund.java#L1-L42)
 
 **章节来源**
 - [PRD.md:347-400](file://PRD.md#L347-L400)
-- [schema.sql:1-93](file://src/main/resources/db/schema.sql#L1-L93)
+- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
 
 ## 性能考虑
 
@@ -656,6 +797,7 @@ POSITION }|--|| FUND : "fund_code"
 - 基金搜索支持异步响应
 - 净值历史查询支持时间段过滤
 - 实时估值采用多源并发获取
+- **数据源分析采用异步加载**：避免阻塞主页面渲染
 
 ### 前端优化
 - 图表渲染优化，使用ECharts高性能渲染
@@ -663,6 +805,7 @@ POSITION }|--|| FUND : "fund_code"
 - 数据格式化函数优化，减少重复计算
 - **导航持久性优化**：通过useRef避免不必要的重渲染
 - **智能估值缓存**：多源估值结果缓存，减少重复计算
+- **标签页懒加载**：数据源分析标签页仅在激活时加载
 
 ### 导航持久性性能优化
 - 使用useRef存储lastSearchPath，避免状态更新触发重渲染
@@ -674,10 +817,18 @@ POSITION }|--|| FUND : "fund_code"
 - **懒加载**：图片和复杂图表按需加载
 - **防抖处理**：搜索和输入操作使用防抖优化
 - **CSS动画**：使用硬件加速的CSS动画替代JavaScript动画
+- **组件记忆化**：使用React.memo优化重复渲染
+
+### 数据分析性能优化
+- **分页加载**：补偿记录采用分页加载
+- **条件查询**：准确度统计使用精确的时间范围查询
+- **索引优化**：数据库表建立适当的索引支持快速查询
+- **缓存统计结果**：频繁访问的统计数据进行缓存
 
 **章节来源**
 - [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
 - [FundDetail.tsx:35-70](file://fund-web/src/pages/Fund/FundDetail.tsx#L35-L70)
+- [EstimateAnalysisTab.tsx:15-28](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L15-L28)
 
 ## 故障排除指南
 
@@ -708,10 +859,17 @@ POSITION }|--|| FUND : "fund_code"
 2. **验证权重计算**：检查权重调整逻辑
 3. **查看历史准确度数据**：确认MAE计算正确
 
+#### 数据源分析功能异常
+1. **检查数据库连接**：确认estimate_prediction表可访问
+2. **验证统计查询**：检查准确度统计查询是否正确
+3. **查看预测数据**：确认预测数据表中有足够的历史数据
+4. **检查权限配置**：确认数据库用户有适当的查询权限
+
 **章节来源**
 - [FundDataAggregator.java:158-169](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L158-L169)
 - [application.yml:18-21](file://src/main/resources/application.yml#L18-L21)
 - [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
+- [EstimateAnalysisService.java:144-156](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L144-156)
 
 ## 结论
 
@@ -723,6 +881,7 @@ POSITION }|--|| FUND : "fund_code"
 4. **可扩展性**：模块化的架构设计，便于后续功能扩展
 5. **导航持久性增强**：新增的路径跟踪机制显著改善了用户在"基金查询"区域内的浏览体验
 6. **智能估值系统**：多数据源估值切换和智能综合预估，提供更准确的投资参考
+7. **数据分析能力增强**：新增的数据源分析功能，提供详细的数据质量评估和趋势分析
 
 **更新亮点**：
 - **基金详情页面重大改进**：新增智能估值切换功能，支持多数据源对比
@@ -731,5 +890,8 @@ POSITION }|--|| FUND : "fund_code"
 - **行业分布可视化**：饼图展示和标签格式化
 - **板块涨跌幅功能**：关联板块实时涨跌显示
 - **导航持久性增强**：通过lastSearchPath引用和useEffect路径跟踪，实现了智能的导航状态保持
+- **数据源分析标签**：新增EstimateAnalysisTab组件，提供详细的数据源准确度分析
+- **智能综合预估**：基于历史准确度的智能权重调整和可信度评估
+- **补偿记录追踪**：完整的预测数据补偿和实际净值发布记录
 
-项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。
+项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。新增的数据源分析功能进一步提升了系统的专业性和实用性，为用户提供更深入的数据洞察和更可靠的估值参考。

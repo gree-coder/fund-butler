@@ -8,4 +8,8 @@
     <suppress files="StockEstimateDataSource\.java" checks=".*"/>
     <suppress files="FundDataSyncScheduler\.java" checks=".*"/>
     <suppress files="EastMoneyDataSource\.java" checks=".*"/>
+    <!-- CLI 模块使用 Picocli 注解，字段需要包级可见 -->
+    <suppress files=".*cli.*\.java" checks="VisibilityModifier"/>
+    <!-- CLI 模块行尾空格由 IDE 自动处理 -->
+    <suppress files=".*cli.*\.java" checks="RegexpSingleline"/>
 </suppressions>

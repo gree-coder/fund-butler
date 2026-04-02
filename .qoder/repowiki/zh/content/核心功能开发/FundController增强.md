@@ -4,6 +4,9 @@
 **本文档引用的文件**
 - [FundController.java](file://src/main/java/com/qoder/fund/controller/FundController.java)
 - [FundService.java](file://src/main/java/com/qoder/fund/service/FundService.java)
+- [EstimateAnalysisService.java](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java)
+- [EstimateAnalysisDTO.java](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java)
+- [EstimatePredictionMapper.java](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
 - [StockEstimateDataSource.java](file://src/main/java/com/qoder/fund/datasource/StockEstimateDataSource.java)
@@ -17,17 +20,21 @@
 - [schema.sql](file://src/main/resources/db/schema.sql)
 - [data.sql](file://src/main/resources/db/data.sql)
 - [FundDetail.tsx](file://fund-web/src/pages/Fund/FundDetail.tsx)
+- [EstimateAnalysisTab.tsx](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx)
+- [estimateAnalysis.ts](file://fund-web/src/api/estimateAnalysis.ts)
 - [fund.ts](file://fund-web/src/api/fund.ts)
 - [PRD.md](file://PRD.md)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增手动数据刷新端点功能，支持前端主动刷新数据
-- 添加RefreshResultDTO数据传输对象
-- 更新FundController控制器，新增POST /api/fund/{code}/refresh端点
-- 增强FundService和FundDataAggregator的刷新数据处理能力
-- 完善前端FundDetail页面的刷新功能集成
+- 新增数据源分析API端点 `/api/fund/{code}/estimate-analysis`，提供详细的估值数据源分析功能
+- 新增EstimateAnalysisService服务类，实现数据源准确度分析和历史数据统计
+- 新增EstimateAnalysisDTO数据传输对象，定义完整的分析数据结构
+- 新增EstimatePredictionMapper数据库映射，支持历史预测数据查询
+- 新增EstimatePrediction实体和数据库表，记录估值预测准确度数据
+- 新增前端EstimateAnalysisTab组件，提供可视化数据分析界面
+- 在FundDetail页面中集成数据源分析标签页
 
 ## 目录
 1. [简介](#简介)
@@ -46,7 +53,7 @@ FundController增强项目是一个基于Spring Boot和React的基金管理系�
 
 项目采用前后端分离架构，后端使用Java Spring Boot提供RESTful API，前端使用React TypeScript构建用户界面。系统集成了多个基金数据源，包括东方财富、天天基金等，提供了丰富的基金信息展示和分析功能。
 
-**更新** 新增手动数据刷新功能，允许用户主动触发数据同步，提供更灵活的数据更新机制。
+**更新** 新增数据源分析功能，通过 `/api/fund/{code}/estimate-analysis` 端点提供详细的估值数据源分析，包括实时估值对比、准确度统计、历史预测记录等功能，帮助用户更好地理解和评估不同数据源的可靠性。
 
 ## 项目结构
 
@@ -81,12 +88,12 @@ O --> P
 ```
 
 **图表来源**
-- [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
+- [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
 - [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
 - [FundDataAggregator.java:1-508](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L508)
 
 **章节来源**
-- [FundController.java:1-62](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L62)
+- [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
 - [application.yml:1-43](file://src/main/resources/application.yml#L1-L43)
 
 ## 核心组件
@@ -99,11 +106,13 @@ FundController是系统的核心控制器，负责处理所有与基金相关的
 classDiagram
 class FundController {
 -FundService fundService
+-EstimateAnalysisService estimateAnalysisService
 +search(keyword) Result~Map~
 +getDetail(code) Result~FundDetailDTO~
 +getNavHistory(code, period) Result~NavHistoryDTO~
 +getEstimates(code) Result~EstimateSourceDTO~
 +refresh(code) Result~RefreshResultDTO~
++getEstimateAnalysis(code) Result~EstimateAnalysisDTO~
 }
 class FundService {
 -FundDataAggregator dataAggregator
@@ -112,6 +121,19 @@ class FundService {
 +getNavHistory(fundCode, period) NavHistoryDTO
 +getMultiSourceEstimates(fundCode) EstimateSourceDTO
 +refreshFundData(fundCode) RefreshResultDTO
+}
+class EstimateAnalysisService {
+-FundDataAggregator fundDataAggregator
+-EstimatePredictionMapper estimatePredictionMapper
+-FundMapper fundMapper
+-FundNavMapper fundNavMapper
++getEstimateAnalysis(fundCode) EstimateAnalysisDTO
+-buildCurrentEstimates(fundCode) CurrentEstimate
+-buildAccuracyStats(fundCode) AccuracyStats
+-buildCompensationLogs(fundCode) CompensationLog[]
+-calculateConfidence(fundCode, sourceKey) BigDecimal
+-calculateRating(mae) Integer
+-calculateTrend(fundCode, sourceKey) String
 }
 class FundDataAggregator {
 -EastMoneyDataSource eastMoneyDataSource
@@ -123,14 +145,18 @@ class FundDataAggregator {
 +refreshFundData(fundCode) RefreshResultDTO
 }
 FundController --> FundService : "依赖"
+FundController --> EstimateAnalysisService : "依赖"
 FundService --> FundDataAggregator : "依赖"
+EstimateAnalysisService --> FundDataAggregator : "依赖"
+EstimateAnalysisService --> EstimatePredictionMapper : "依赖"
 FundDataAggregator --> EastMoneyDataSource : "使用"
 FundDataAggregator --> StockEstimateDataSource : "使用"
 ```
 
 **图表来源**
-- [FundController.java:20-60](file://src/main/java/com/qoder/fund/controller/FundController.java#L20-L60)
+- [FundController.java:24-78](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L78)
 - [FundService.java:22-73](file://src/main/java/com/qoder/fund/service/FundService.java#L22-L73)
+- [EstimateAnalysisService.java:29-305](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L29-L305)
 - [FundDataAggregator.java:28-349](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L28-L349)
 
 ### 数据源层
@@ -201,22 +227,62 @@ class FundDetailDTO {
 class EstimateSourceDTO {
 +EstimateItem[] sources
 }
-class EstimateItem {
+class EstimateAnalysisDTO {
++String fundCode
++String fundName
++CurrentEstimate currentEstimates
++AccuracyStats accuracyStats
++CompensationLog[] compensationLogs
+}
+class CurrentEstimate {
++BigDecimal actualNav
++BigDecimal actualReturn
++LocalDate actualNavDate
++Boolean actualReturnDelayed
++SourceEstimate[] sources
++SmartEstimate smartEstimate
+}
+class SourceEstimate {
 +String key
 +String label
 +BigDecimal estimateNav
 +BigDecimal estimateReturn
 +boolean available
++BigDecimal weight
++BigDecimal confidence
 +String description
 }
-class NavHistoryDTO {
-+String[] dates
-+BigDecimal[] navs
+class SmartEstimate {
++BigDecimal nav
++BigDecimal returnRate
++String strategy
++String scenario
++boolean accuracyEnhanced
++Map~String,BigDecimal~ weights
++String description
 }
-class FundSearchDTO {
-+String code
-+String name
-+String type
+class AccuracyStats {
++String period
++SourceAccuracy[] sources
+}
+class SourceAccuracy {
++String key
++String label
++BigDecimal mae
++Integer predictionCount
++BigDecimal hitRate
++String trend
++Integer rating
+}
+class CompensationLog {
++LocalDate date
++BigDecimal beforeNav
++BigDecimal beforeReturn
++BigDecimal afterNav
++BigDecimal afterReturn
++String source
++CompensationType type
++String reason
 }
 class RefreshResultDTO {
 +FundDetailDTO detail
@@ -224,6 +290,13 @@ class RefreshResultDTO {
 }
 FundDetailDTO --> EstimateSourceDTO : "包含"
 EstimateSourceDTO --> EstimateItem : "包含"
+EstimateAnalysisDTO --> CurrentEstimate : "包含"
+EstimateAnalysisDTO --> AccuracyStats : "包含"
+EstimateAnalysisDTO --> CompensationLog : "包含"
+CurrentEstimate --> SourceEstimate : "包含"
+CurrentEstimate --> SmartEstimate : "包含"
+AccuracyStats --> SourceAccuracy : "包含"
+SourceAccuracy --> CompensationLog : "包含"
 RefreshResultDTO --> FundDetailDTO : "包含"
 RefreshResultDTO --> EstimateSourceDTO : "包含"
 ```
@@ -231,13 +304,15 @@ RefreshResultDTO --> EstimateSourceDTO : "包含"
 **图表来源**
 - [FundDetailDTO.java:10-40](file://src/main/java/com/qoder/fund/dto/FundDetailDTO.java#L10-L40)
 - [EstimateSourceDTO.java:9-22](file://src/main/java/com/qoder/fund/dto/EstimateSourceDTO.java#L9-L22)
+- [EstimateAnalysisDTO.java:10-148](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java#L10-L148)
 - [NavHistoryDTO.java:9-12](file://src/main/java/com/qoder/fund/dto/NavHistoryDTO.java#L9-L12)
 - [FundSearchDTO.java:6-10](file://src/main/java/com/qoder/fund/dto/FundSearchDTO.java#L6-L10)
 - [RefreshResultDTO.java:5-9](file://src/main/java/com/qoder/fund/dto/RefreshResultDTO.java#L5-L9)
 
 **章节来源**
-- [FundController.java:20-60](file://src/main/java/com/qoder/fund/controller/FundController.java#L20-L60)
+- [FundController.java:24-78](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L78)
 - [FundService.java:22-73](file://src/main/java/com/qoder/fund/service/FundService.java#L22-L73)
+- [EstimateAnalysisDTO.java:10-148](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java#L10-L148)
 - [FundDataAggregator.java:36-349](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L349)
 
 ## 架构概览
@@ -249,37 +324,46 @@ graph TB
 subgraph "表现层"
 FE[前端React应用]
 API[RESTful API]
+ENDPOINT[/api/fund/{code}/estimate-analysis]
 end
 subgraph "业务逻辑层"
 CTRL[控制器层]
 SVC[服务层]
+ANALYSIS[分析服务层]
 AGG[数据聚合层]
 end
 subgraph "数据访问层"
 DS[数据源接口]
 EM[东方财富数据源]
 SE[股票估值数据源]
+EP[估值预测映射]
 end
 subgraph "数据存储层"
 DB[(MySQL数据库)]
 CACHE[(Caffeine缓存)]
+TABLE[estimate_prediction表]
 end
 FE --> API
 API --> CTRL
 CTRL --> SVC
+CTRL --> ANALYSIS
 SVC --> AGG
+ANALYSIS --> EP
 AGG --> DS
 DS --> EM
 DS --> SE
 AGG --> CACHE
 AGG --> DB
+EP --> TABLE
 SVC --> DB
+ANALYSIS --> DB
 CTRL --> API
 ```
 
 **图表来源**
-- [FundController.java:17-60](file://src/main/java/com/qoder/fund/controller/FundController.java#L17-L60)
+- [FundController.java:17-78](file://src/main/java/com/qoder/fund/controller/FundController.java#L17-L78)
 - [FundService.java:20-73](file://src/main/java/com/qoder/fund/service/FundService.java#L20-L73)
+- [EstimateAnalysisService.java:29-305](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L29-L305)
 - [FundDataAggregator.java:23-95](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L23-L95)
 
 ### 数据流处理
@@ -291,31 +375,29 @@ sequenceDiagram
 participant Client as "客户端"
 participant Controller as "FundController"
 participant Service as "FundService"
+participant AnalysisService as "EstimateAnalysisService"
 participant Aggregator as "FundDataAggregator"
 participant DataSource as "数据源"
 participant Cache as "缓存"
 participant Database as "数据库"
-Client->>Controller : GET /api/fund/{code}
-Controller->>Service : getDetail(code)
-Service->>Aggregator : getFundDetail(code)
-alt 缓存命中
-Aggregator->>Cache : getFundDetail(code)
-Cache-->>Aggregator : 缓存数据
-else 缓存未命中
-Aggregator->>DataSource : getFundDetail(code)
-DataSource-->>Aggregator : 原始数据
-Aggregator->>Cache : 缓存数据
-Aggregator->>Database : 持久化数据
-end
-Aggregator-->>Service : 处理后的数据
-Service-->>Controller : FundDetailDTO
+Client->>Controller : GET /api/fund/{code}/estimate-analysis
+Controller->>AnalysisService : getEstimateAnalysis(code)
+AnalysisService->>Aggregator : getMultiSourceEstimates(code)
+Aggregator->>DataSource : getMultiSourceEstimates(code)
+DataSource-->>Aggregator : EstimateSourceDTO
+Aggregator-->>AnalysisService : EstimateSourceDTO
+AnalysisService->>AnalysisService : 构建当前估值数据
+AnalysisService->>AnalysisService : 计算准确度统计
+AnalysisService->>AnalysisService : 生成补偿记录
+AnalysisService-->>Controller : EstimateAnalysisDTO
 Controller-->>Client : JSON响应
 ```
 
 **图表来源**
-- [FundController.java:32-38](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L38)
-- [FundService.java:33-34](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L34)
-- [FundDataAggregator.java:44-61](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L44-L61)
+- [FundController.java:70-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L70-L77)
+- [EstimateAnalysisService.java:42-62](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L42-L62)
+- [FundService.java:33-68](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L68)
+- [FundDataAggregator.java:174-289](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L174-289)
 
 **章节来源**
 - [application.yml:18-25](file://src/main/resources/application.yml#L18-L25)
@@ -325,7 +407,7 @@ Controller-->>Client : JSON响应
 
 ### FundController组件分析
 
-FundController作为系统的入口点，提供了五个核心API端点：
+FundController作为系统的入口点，提供了七个核心API端点：
 
 #### 搜索功能
 ```mermaid
@@ -342,7 +424,7 @@ H --> I
 ```
 
 **图表来源**
-- [FundController.java:24-29](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L29)
+- [FundController.java:32-38](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L38)
 - [FundService.java:26-30](file://src/main/java/com/qoder/fund/service/FundService.java#L26-L30)
 - [FundDataAggregator.java:36-39](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L39)
 
@@ -372,7 +454,7 @@ Controller-->>Client : 成功响应
 ```
 
 **图表来源**
-- [FundController.java:32-38](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L38)
+- [FundController.java:40-47](file://src/main/java/com/qoder/fund/controller/FundController.java#L40-L47)
 - [FundService.java:33-34](file://src/main/java/com/qoder/fund/service/FundService.java#L33-L34)
 - [FundDataAggregator.java:44-61](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L44-L61)
 
@@ -393,7 +475,7 @@ J --> K[返回给控制器]
 ```
 
 **图表来源**
-- [FundController.java:41-45](file://src/main/java/com/qoder/fund/controller/FundController.java#L41-L45)
+- [FundController.java:49-54](file://src/main/java/com/qoder/fund/controller/FundController.java#L49-L54)
 - [FundService.java:37-64](file://src/main/java/com/qoder/fund/service/FundService.java#L37-L64)
 - [EastMoneyDataSource.java:102-181](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L102-L181)
 
@@ -428,7 +510,7 @@ M --> P[返回EstimateSourceDTO]
 ```
 
 **图表来源**
-- [FundController.java:48-50](file://src/main/java/com/qoder/fund/controller/FundController.java#L48-L50)
+- [FundController.java:56-59](file://src/main/java/com/qoder/fund/controller/FundController.java#L56-L59)
 - [FundService.java:67-68](file://src/main/java/com/qoder/fund/service/FundService.java#L67-L68)
 - [FundDataAggregator.java:174-289](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L174-L289)
 
@@ -455,13 +537,143 @@ Controller-->>User : JSON响应
 ```
 
 **图表来源**
-- [FundController.java:53-60](file://src/main/java/com/qoder/fund/controller/FundController.java#L53-L60)
+- [FundController.java:61-68](file://src/main/java/com/qoder/fund/controller/FundController.java#L61-L68)
 - [FundService.java:71-73](file://src/main/java/com/qoder/fund/service/FundService.java#L71-L73)
 - [FundDataAggregator.java:158-169](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L158-L169)
 
+#### 数据源分析功能
+**新增功能** FundController新增了数据源分析端点，提供详细的估值数据源分析：
+
+```mermaid
+sequenceDiagram
+participant Client as "客户端"
+participant Controller as "FundController"
+participant AnalysisService as "EstimateAnalysisService"
+participant Aggregator as "FundDataAggregator"
+participant Database as "数据库"
+Client->>Controller : GET /api/fund/{code}/estimate-analysis
+Controller->>AnalysisService : getEstimateAnalysis(code)
+AnalysisService->>Aggregator : getMultiSourceEstimates(code)
+Aggregator-->>AnalysisService : EstimateSourceDTO
+AnalysisService->>AnalysisService : 构建当前估值数据
+AnalysisService->>AnalysisService : 计算准确度统计
+AnalysisService->>AnalysisService : 生成补偿记录
+AnalysisService->>Database : 查询历史预测数据
+Database-->>AnalysisService : 历史统计数据
+AnalysisService-->>Controller : EstimateAnalysisDTO
+Controller-->>Client : JSON响应
+```
+
+**图表来源**
+- [FundController.java:70-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L70-L77)
+- [EstimateAnalysisService.java:42-62](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L42-L62)
+
 **章节来源**
-- [FundController.java:24-60](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L60)
+- [FundController.java:32-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L77)
 - [FundService.java:26-73](file://src/main/java/com/qoder/fund/service/FundService.java#L26-L73)
+
+### EstimateAnalysisService组件分析
+
+**新增功能** EstimateAnalysisService是专门处理数据源分析的服务类，实现了完整的分析功能：
+
+#### 分析数据构建
+服务类负责构建三个主要部分的数据：
+
+```mermaid
+flowchart TD
+A[获取分析请求] --> B[构建基础信息]
+B --> C[构建当前估值数据]
+C --> D[构建准确度统计]
+D --> E[构建补偿记录]
+E --> F[返回完整分析DTO]
+subgraph "当前估值数据构建"
+G[获取多数据源估值]
+H[查找实际净值]
+I[构建各数据源估值列表]
+J[计算可信度]
+K[提取智能综合预估]
+end
+C --> G
+G --> H
+H --> I
+I --> J
+J --> K
+subgraph "准确度统计构建"
+L[查询历史预测数据]
+M[计算MAE(平均绝对误差)]
+N[计算命中率]
+O[计算星级评级]
+P[计算趋势分析]
+end
+D --> L
+L --> M
+M --> N
+N --> O
+O --> P
+```
+
+**图表来源**
+- [EstimateAnalysisService.java:42-62](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L42-L62)
+- [EstimateAnalysisService.java:67-139](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L67-L139)
+- [EstimateAnalysisService.java:161-194](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L161-L194)
+- [EstimateAnalysisService.java:232-291](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L232-L291)
+
+#### 可信度计算算法
+服务类实现了基于历史MAE的可信度计算算法：
+
+```mermaid
+flowchart TD
+A[计算可信度请求] --> B[确定时间范围(30天)]
+B --> C[查询历史MAE]
+C --> D{是否有历史数据?}
+D --> |否| E[返回默认可信度0.5]
+D --> |是| F[计算公式: confidence = 1 / (1 + MAE)]
+F --> G[返回可信度值]
+E --> H[结束]
+G --> H
+```
+
+**图表来源**
+- [EstimateAnalysisService.java:144-156](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L144-L156)
+
+#### 准确度统计计算
+服务类实现了完整的准确度统计计算：
+
+```mermaid
+flowchart TD
+A[构建准确度统计] --> B[查询历史预测数据]
+B --> C[按数据源分组统计]
+C --> D[计算MAE(平均绝对误差)]
+D --> E[计算命中率(误差<0.5%)]
+E --> F[计算星级评级]
+F --> G[计算趋势(最近7天vs7-14天)]
+G --> H[返回统计结果]
+```
+
+**图表来源**
+- [EstimateAnalysisService.java:161-194](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L161-L194)
+
+#### 补偿记录生成
+服务类实现了数据补偿记录的生成逻辑：
+
+```mermaid
+flowchart TD
+A[构建补偿记录] --> B[查询最近7天净值]
+B --> C[查询对应日期预测记录]
+C --> D{是否有预测记录?}
+D --> |是| E[生成预测补偿记录]
+D --> |否| F[生成实际净值记录]
+E --> G[添加到结果列表]
+F --> G
+G --> H[按日期排序]
+H --> I[返回补偿记录]
+```
+
+**图表来源**
+- [EstimateAnalysisService.java:232-291](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L232-L291)
+
+**章节来源**
+- [EstimateAnalysisService.java:29-305](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L29-L305)
 
 ### 数据聚合器组件分析
 
@@ -563,6 +775,7 @@ participant Page as "FundDetail页面"
 participant API as "fundApi"
 participant Controller as "FundController"
 participant Service as "FundService"
+participant AnalysisService as "EstimateAnalysisService"
 participant Aggregator as "FundDataAggregator"
 User->>Page : 访问基金详情
 Page->>API : getDetail(code)
@@ -577,22 +790,58 @@ Page-->>User : 渲染详情页面
 Note over Page : 同时发起多个API调用
 Page->>API : getNavHistory(code, period)
 Page->>API : getEstimates(code)
-Note over Page : 用户点击刷新按钮
-Page->>API : refreshData(code)
-API->>Controller : POST /fund/{code}/refresh
-Controller->>Service : refreshFundData(code)
-Service->>Aggregator : refreshFundData(code)
-Aggregator->>Aggregator : 清除缓存并重新获取
-Aggregator-->>Service : RefreshResultDTO
-Service-->>Controller : RefreshResultDTO
+Note over Page : 用户点击数据源分析标签
+Page->>API : getEstimateAnalysis(code)
+API->>Controller : GET /fund/{code}/estimate-analysis
+Controller->>AnalysisService : getEstimateAnalysis(code)
+AnalysisService->>Aggregator : getMultiSourceEstimates(code)
+Aggregator-->>AnalysisService : EstimateSourceDTO
+AnalysisService-->>Controller : EstimateAnalysisDTO
 Controller-->>API : JSON响应
-API-->>Page : 刷新后的数据
-Page-->>User : 更新UI显示
+API-->>Page : 分析数据
+Page-->>User : 渲染分析标签页
 ```
 
 **图表来源**
 - [FundDetail.tsx:32-86](file://fund-web/src/pages/Fund/FundDetail.tsx#L32-L86)
 - [fund.ts:61-76](file://fund-web/src/api/fund.ts#L61-L76)
+- [EstimateAnalysisTab.tsx:15-28](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L15-L28)
+
+#### 数据源分析标签页
+**新增功能** EstimateAnalysisTab组件提供了完整的数据分析界面：
+
+```mermaid
+flowchart TD
+A[用户访问数据源分析] --> B[加载分析数据]
+B --> C[渲染实时估值卡片]
+C --> D[渲染数据源对比表格]
+D --> E[渲染准确度统计表格]
+E --> F[渲染补偿记录表格]
+F --> G[用户交互功能]
+subgraph "实时估值卡片"
+H[显示今日实际净值]
+I[显示实际涨幅]
+J[显示智能综合预估]
+end
+C --> H
+H --> I
+I --> J
+subgraph "数据源对比表格"
+K[显示各数据源净值]
+L[显示各数据源涨幅]
+M[显示数据源状态]
+N[显示当前权重]
+O[显示可信度]
+end
+D --> K
+K --> L
+L --> M
+M --> N
+N --> O
+```
+
+**图表来源**
+- [EstimateAnalysisTab.tsx:211-329](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L211-L329)
 
 #### 实时估值切换
 前端实现了灵活的估值数据源切换功能：
@@ -621,7 +870,7 @@ J --> K
 
 **图表来源**
 - [FundDetail.tsx:144-174](file://fund-web/src/pages/Fund/FundDetail.tsx#L144-L174)
-- [FundDataAggregator.java:174-289](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L174-L289)
+- [FundDataAggregator.java:174-289](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L174-289)
 
 #### 刷新功能集成
 **新增功能** 前端集成了手动数据刷新功能：
@@ -643,11 +892,12 @@ L --> M[显示失败消息]
 ```
 
 **图表来源**
-- [FundDetail.tsx:66-86](file://fund-web/src/pages/Fund/FundDetail.tsx#L66-L86)
+- [FundDetail.tsx:73-94](file://fund-web/src/pages/Fund/FundDetail.tsx#L73-L94)
 - [fund.ts:74-76](file://fund-web/src/api/fund.ts#L74-L76)
 
 **章节来源**
-- [FundDetail.tsx:20-257](file://fund-web/src/pages/Fund/FundDetail.tsx#L20-L257)
+- [FundDetail.tsx:20-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L20-L362)
+- [EstimateAnalysisTab.tsx:1-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L331)
 - [fund.ts:61-76](file://fund-web/src/api/fund.ts#L61-L76)
 
 ## 依赖关系分析
@@ -667,46 +917,58 @@ end
 subgraph "内部模块"
 G[FundController]
 H[FundService]
-I[FundDataAggregator]
-J[EastMoneyDataSource]
-K[StockEstimateDataSource]
+I[EstimateAnalysisService]
+J[FundDataAggregator]
+K[EastMoneyDataSource]
+L[StockEstimateDataSource]
+M[EstimatePredictionMapper]
 end
 subgraph "数据模型"
-L[FundDetailDTO]
-M[EstimateSourceDTO]
-N[NavHistoryDTO]
-O[FundSearchDTO]
-P[RefreshResultDTO]
+N[FundDetailDTO]
+O[EstimateSourceDTO]
+P[EstimateAnalysisDTO]
+Q[NavHistoryDTO]
+R[FundSearchDTO]
+S[RefreshResultDTO]
+T[EstimatePrediction]
 end
 A --> G
 A --> H
 A --> I
-B --> J
+A --> M
 B --> K
-C --> J
+B --> L
 C --> K
-D --> I
+C --> L
+D --> J
 E --> F
-F --> I
+F --> J
+F --> M
 G --> H
-H --> I
+G --> I
+H --> J
 I --> J
-I --> K
-H --> L
 I --> M
+J --> K
+J --> L
 H --> N
-G --> O
-H --> P
+I --> O
+I --> P
+H --> Q
+G --> R
+H --> S
+M --> T
 ```
 
 **图表来源**
-- [FundController.java:3-9](file://src/main/java/com/qoder/fund/controller/FundController.java#L3-L9)
+- [FundController.java:3-11](file://src/main/java/com/qoder/fund/controller/FundController.java#L3-L11)
 - [EastMoneyDataSource.java:9-12](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L9-L12)
 - [StockEstimateDataSource.java:8-11](file://src/main/java/com/qoder/fund/datasource/StockEstimateDataSource.java#L8-L11)
+- [EstimatePredictionMapper.java:14-58](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java#L14-L58)
 
 ### 数据库设计
 
-系统采用了规范的数据库设计，支持完整的基金数据管理：
+系统采用了规范的数据库设计，支持完整的基金数据管理和分析功能：
 
 ```mermaid
 erDiagram
@@ -732,6 +994,19 @@ decimal nav
 decimal acc_nav
 decimal daily_return
 unique uk_code_date
+}
+ESTIMATE_PREDICTION {
+bigint id PK
+varchar fund_code FK
+varchar source_key
+date predict_date
+decimal predicted_nav
+decimal predicted_return
+decimal actual_nav
+decimal actual_return
+decimal return_error
+unique uk_fund_source_date
+index idx_fund_date
 }
 ACCOUNT {
 bigint id PK
@@ -769,16 +1044,17 @@ datetime created_at
 unique uk_fund_group
 }
 FUND ||--o{ FUND_NAV : "包含"
+FUND ||--o{ ESTIMATE_PREDICTION : "包含"
 ACCOUNT ||--o{ POSITION : "拥有"
 POSITION ||--o{ FUND_TRANSACTION : "产生"
 FUND ||--o{ WATCHLIST : "被关注"
 ```
 
 **图表来源**
-- [schema.sql:1-78](file://src/main/resources/db/schema.sql#L1-L78)
+- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
 
 **章节来源**
-- [schema.sql:1-78](file://src/main/resources/db/schema.sql#L1-L78)
+- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
 - [data.sql:1-9](file://src/main/resources/db/data.sql#L1-L9)
 
 ## 性能考虑
@@ -800,12 +1076,20 @@ FUND ||--o{ WATCHLIST : "被关注"
 - **数据库索引**：为常用查询字段建立索引
 - **JSON字段存储**：使用MySQL JSON类型存储动态数据
 - **数据去重**：防止重复插入净值数据
+- **历史数据分区**：estimate_prediction表按日期分区存储
 
 ### 刷新性能优化
 **新增功能** 手动刷新功能采用了高效的缓存清理策略：
 - **精准缓存清理**：仅清理相关键值对，避免全量缓存失效
 - **并行数据获取**：同时获取详情和估值数据，减少请求次数
 - **快速响应**：刷新操作完成后立即更新前端显示
+
+### 分析功能性能优化
+**新增功能** 数据源分析功能采用了专门的性能优化策略：
+- **历史数据缓存**：准确度统计结果进行缓存
+- **分页查询**：补偿记录按日期倒序分页显示
+- **条件查询**：使用索引优化查询性能
+- **数据聚合**：在数据库层面进行统计计算
 
 ## 故障排除指南
 
@@ -833,6 +1117,13 @@ FUND ||--o{ WATCHLIST : "被关注"
 3. **查看刷新日志**：关注refreshFundData方法的执行情况
 4. **检查前端状态**：确认刷新按钮的状态更新正常
 
+#### 数据源分析功能异常
+**新增功能** 数据源分析功能相关的故障排除：
+1. **检查历史数据**：确认estimate_prediction表中有足够的历史数据
+2. **验证数据库查询**：检查EstimatePredictionMapper的SQL查询
+3. **查看分析日志**：关注EstimateAnalysisService的执行情况
+4. **检查前端渲染**：确认EstimateAnalysisTab组件正常显示
+
 **章节来源**
 - [EastMoneyDataSource.java:71-75](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L71-L75)
 - [FundDataAggregator.java:291-300](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L291-L300)
@@ -841,7 +1132,7 @@ FUND ||--o{ WATCHLIST : "被关注"
 
 FundController增强项目展现了一个完整的基金数据管理系统的设计和实现。通过采用多数据源聚合、智能缓存、优雅降级等技术手段，系统在保证数据准确性的同时，提供了优秀的用户体验。
 
-**更新** 新增的手动数据刷新功能进一步增强了系统的灵活性和用户控制能力。用户现在可以主动触发数据同步，确保获取到最新的基金信息，特别是在市场波动较大或数据延迟的情况下。
+**更新** 新增的数据源分析功能进一步增强了系统的智能化水平。通过 `/api/fund/{code}/estimate-analysis` 端点，用户可以获得详细的估值数据源分析，包括实时估值对比、准确度统计、历史预测记录等功能，帮助用户更好地理解和评估不同数据源的可靠性。
 
 ### 主要优势
 
@@ -850,6 +1141,7 @@ FundController增强项目展现了一个完整的基金数据管理系统的设
 3. **可扩展性**：模块化设计便于功能扩展和维护
 4. **用户体验**：前端交互设计直观友好，支持多种数据源切换
 5. **用户控制**：手动刷新功能让用户能够主动控制数据更新时机
+6. **智能分析**：数据源分析功能提供深度洞察和决策支持
 
 ### 技术亮点
 
@@ -858,5 +1150,7 @@ FundController增强项目展现了一个完整的基金数据管理系统的设
 - **缓存优化**：合理的缓存策略平衡了数据新鲜度和性能
 - **错误处理**：完善的异常处理和降级机制
 - **精准刷新**：定向缓存清理确保数据更新的准确性和效率
+- **历史数据分析**：基于准确度统计的历史数据追踪和分析
+- **可视化展示**：前端组件提供直观的数据源对比和趋势分析
 
-该系统为个人投资者提供了全面的基金数据查询和分析工具，是现代金融科技应用的典型代表。新增的刷新功能进一步完善了系统的数据管理能力，为用户提供更加灵活和可靠的基金信息服务。
+该系统为个人投资者提供了全面的基金数据查询和分析工具，是现代金融科技应用的典型代表。新增的数据源分析功能进一步完善了系统的数据管理能力，为用户提供更加深入和可靠的基金信息服务，帮助用户做出更明智的投资决策。
