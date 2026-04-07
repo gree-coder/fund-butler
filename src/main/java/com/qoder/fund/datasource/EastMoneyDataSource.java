@@ -325,6 +325,12 @@ public class EastMoneyDataSource implements FundDataSource {
             if (type != null && !type.isEmpty()) {
                 dto.setType(mapFundTypeFromDetail(type));
             }
+            
+            // 港股通基金：根据基金名称判断（如"沪港深"、"港股通"等）
+            // 这些基金投资港股，收盘时间与A股不同（港股16:00收盘）
+            if (!"QDII".equals(dto.getType()) && isHongKongFundByName(dto.getName())) {
+                dto.setType("QDII");
+            }
 
             // 解析基金公司
             String company = extractHtmlTableValue(body, "基金管理人");
@@ -397,6 +403,9 @@ public class EastMoneyDataSource implements FundDataSource {
         String clean = type.replaceAll("<[^>]+>", "").trim();
         // QDII/海外 优先判断（"QDII-混合型"、"指数型-海外股票"应归为QDII）
         if (clean.contains("QDII") || clean.contains("海外")) return "QDII";
+        // 港股通基金：含港股成分，收盘时间与A股不同
+        // "港股"、"沪港深"等关键词表示基金投资港股市场
+        if (clean.contains("港股") || clean.contains("沪港深") || clean.contains("深港")) return "QDII";
         // 债券优先于混合（"混合债券型"应归为BOND）
         if (clean.contains("债券")) return "BOND";
         if (clean.contains("货币")) return "MONEY";
@@ -404,6 +413,17 @@ public class EastMoneyDataSource implements FundDataSource {
         if (clean.contains("混合")) return "MIXED";
         if (clean.contains("指数")) return "INDEX";
         return clean;
+    }
+
+    /**
+     * 根据基金名称判断是否为港股相关基金
+     * 用于在类型字段无法区分时，通过名称判断
+     */
+    private boolean isHongKongFundByName(String fundName) {
+        if (fundName == null) return false;
+        String name = fundName.toLowerCase();
+        return name.contains("港股") || name.contains("沪港深") 
+                || name.contains("深港通") || name.contains("港深");
     }
 
     private void fetchLatestNav(String fundCode, FundDetailDTO dto) {
@@ -876,7 +896,7 @@ public class EastMoneyDataSource implements FundDataSource {
             case "混合型" -> "MIXED";
             case "债券型", "债券指数" -> "BOND";
             case "货币型" -> "MONEY";
-            case "QDII", "QDII-指数" -> "QDII";
+            case "QDII", "QDII-指数", "QDII-股票", "QDII-混合" -> "QDII";
             case "指数型" -> "INDEX";
             default -> "MIXED";
         };
