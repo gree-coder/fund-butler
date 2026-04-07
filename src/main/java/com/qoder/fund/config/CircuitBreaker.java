@@ -119,7 +119,7 @@ public class CircuitBreaker {
     private final Map<String, Config> sourceConfigs = Map.of(
             "eastmoney", new Config().failureThreshold(3).openDuration(Duration.ofSeconds(60)),
             "sina", new Config().failureThreshold(5).openDuration(Duration.ofSeconds(30)),
-            "tencent", new Config().failureThreshold(5).openDuration(Duration.ofSeconds(30)),
+            "tencent", new Config().failureThreshold(10).openDuration(Duration.ofMinutes(5)),
             "stock", new Config().failureThreshold(10).openDuration(Duration.ofSeconds(20))
     );
 

@@ -88,8 +88,8 @@ public class BatchEstimateService {
 
         Map<String, Map<String, Object>> result = new ConcurrentHashMap<>();
 
-        // 分批处理，每批5个（估值接口较慢，减少批次大小）
-        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 5);
+        // 分批处理，每批3个（估值接口较慢，减少批次大小，避免触发限流）
+        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 3);
 
         List<CompletableFuture<Void>> futures = batches.stream()
                 .map(batch -> CompletableFuture.runAsync(() -> {
@@ -102,9 +102,9 @@ public class BatchEstimateService {
                         } catch (Exception e) {
                             log.warn("批量获取估值失败: {}", fundCode, e);
                         }
-                        // 添加短暂延迟，避免触发限流
+                        // 添加延迟，避免触发限流（每只基金间隔100ms）
                         try {
-                            Thread.sleep(50);
+                            Thread.sleep(100);
                         } catch (InterruptedException ignored) {
                             Thread.currentThread().interrupt();
                         }
@@ -136,8 +136,8 @@ public class BatchEstimateService {
 
         Map<String, EstimateSourceDTO> result = new ConcurrentHashMap<>();
 
-        // 分批处理，每批3个（多源估值较慢，减少批次大小）
-        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 3);
+        // 分批处理，每批2个（多源估值较慢，减少批次大小，避免触发限流）
+        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 2);
 
         List<CompletableFuture<Void>> futures = batches.stream()
                 .map(batch -> CompletableFuture.runAsync(() -> {
@@ -150,9 +150,9 @@ public class BatchEstimateService {
                         } catch (Exception e) {
                             log.warn("批量获取多源估值失败: {}", fundCode, e);
                         }
-                        // 添加延迟，避免触发限流
+                        // 添加延迟，避免触发限流（每只基金间隔200ms）
                         try {
-                            Thread.sleep(100);
+                            Thread.sleep(200);
                         } catch (InterruptedException ignored) {
                             Thread.currentThread().interrupt();
                         }

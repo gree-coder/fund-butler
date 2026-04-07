@@ -1,0 +1,12 @@
+# CLI 模式专用配置
+# 禁用缓存，因为 CLI 每次是新进程，缓存无效
+
+spring:
+  cache:
+    type: none
+
+logging:
+  level:
+    com.qoder.fund: warn
+    com.baomidou.mybatisplus: warn
+    org.springframework: warn

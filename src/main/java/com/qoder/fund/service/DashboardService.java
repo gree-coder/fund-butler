@@ -79,8 +79,8 @@ public class DashboardService {
                 todayProfit = todayProfit.add(dailyProfit);
             }
 
-            // 检查是否有实际涨幅
-            if (p.getActualReturn() != null) {
+            // 检查是否有实际涨幅（且非延迟数据，QDII等基金T+1净值延迟）
+            if (p.getActualReturn() != null && !Boolean.TRUE.equals(p.getActualReturnDelayed())) {
                 hasActualReturn = true;
             }
 

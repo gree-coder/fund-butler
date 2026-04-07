@@ -9,6 +9,10 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import picocli.CommandLine;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+
 /**
  * 基金管家 CLI 启动器
  *
@@ -28,6 +32,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
     private final DashboardCommand dashboardCommand;
     private final AccountCommand accountCommand;
     private final SyncCommand syncCommand;
+    private final DataSource dataSource;
 
     private int exitCode;
 
@@ -38,7 +43,8 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
             WatchlistCommand watchlistCommand,
             DashboardCommand dashboardCommand,
             AccountCommand accountCommand,
-            SyncCommand syncCommand) {
+            SyncCommand syncCommand,
+            DataSource dataSource) {
         this.factory = factory;
         this.fundCommand = fundCommand;
         this.positionCommand = positionCommand;
@@ -46,6 +52,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
         this.dashboardCommand = dashboardCommand;
         this.accountCommand = accountCommand;
         this.syncCommand = syncCommand;
+        this.dataSource = dataSource;
     }
 
     public static void main(String[] args) {
@@ -68,14 +75,25 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
             app.setWebApplicationType(WebApplicationType.SERVLET);
             app.run(filteredArgs);
         } else {
-            // CLI 模式: 非 Web 应用
+            // CLI 模式: 非 Web 应用，激活 cli profile 禁用缓存
             app.setWebApplicationType(WebApplicationType.NONE);
+            app.setAdditionalProfiles("cli");
             System.exit(SpringApplication.exit(app.run(args)));
         }
     }
 
     @Override
     public void run(String... args) throws Exception {
+        // CLI 启动时检查数据库连接
+        if (!checkDatabaseConnection()) {
+            System.err.println("错误: 无法连接到数据库，请检查:");
+            System.err.println("  1. MySQL 服务是否已启动");
+            System.err.println("  2. 数据库配置是否正确 (DB_USERNAME, DB_PASSWORD 环境变量)");
+            System.err.println("  3. 数据库 fund_manager 是否存在");
+            this.exitCode = 1;
+            return;
+        }
+
         // 创建主命令
         CommandLine commandLine = new CommandLine(new MainCommand(), factory);
 
@@ -97,6 +115,18 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
     @Override
     public int getExitCode() {
         return exitCode;
+    }
+
+    /**
+     * 检查数据库连接是否可用
+     */
+    private boolean checkDatabaseConnection() {
+        try (Connection connection = dataSource.getConnection()) {
+            return connection.isValid(5);
+        } catch (SQLException e) {
+            System.err.println("数据库连接检查失败: " + e.getMessage());
+            return false;
+        }
     }
 
     /**

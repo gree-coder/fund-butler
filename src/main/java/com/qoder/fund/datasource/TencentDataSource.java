@@ -10,7 +10,6 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 腾讯财经基金估值数据源
@@ -26,12 +25,9 @@ public class TencentDataSource {
     private final OkHttpClient httpClient;
     private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
 
-    public TencentDataSource(com.qoder.fund.config.CircuitBreaker circuitBreaker) {
+    public TencentDataSource(OkHttpClient httpClient, com.qoder.fund.config.CircuitBreaker circuitBreaker) {
+        this.httpClient = httpClient;
         this.circuitBreaker = circuitBreaker;
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build();
     }
 
     /**

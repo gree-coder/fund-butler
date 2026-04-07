@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,13 +30,10 @@ public class EastMoneyDataSource implements FundDataSource {
     private final ObjectMapper objectMapper;
     private final CircuitBreaker circuitBreaker;
 
-    public EastMoneyDataSource(ObjectMapper objectMapper, CircuitBreaker circuitBreaker) {
+    public EastMoneyDataSource(OkHttpClient httpClient, ObjectMapper objectMapper, CircuitBreaker circuitBreaker) {
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.circuitBreaker = circuitBreaker;
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(15, TimeUnit.SECONDS)
-                .build();
     }
 
     @Override

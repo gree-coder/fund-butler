@@ -10,7 +10,6 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 新浪财经基金估值数据源
@@ -26,12 +25,9 @@ public class SinaDataSource {
     private final OkHttpClient httpClient;
     private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
 
-    public SinaDataSource(com.qoder.fund.config.CircuitBreaker circuitBreaker) {
+    public SinaDataSource(OkHttpClient httpClient, com.qoder.fund.config.CircuitBreaker circuitBreaker) {
+        this.httpClient = httpClient;
         this.circuitBreaker = circuitBreaker;
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .build();
     }
 
     /**
