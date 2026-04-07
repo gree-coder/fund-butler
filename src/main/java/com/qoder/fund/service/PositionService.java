@@ -3,6 +3,7 @@ package com.qoder.fund.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qoder.fund.datasource.FundDataAggregator;
 import com.qoder.fund.dto.EstimateSourceDTO;
+import com.qoder.fund.dto.FundDetailDTO;
 import com.qoder.fund.dto.PositionDTO;
 import com.qoder.fund.dto.request.AddPositionRequest;
 import com.qoder.fund.dto.request.AddTransactionRequest;
@@ -80,8 +81,16 @@ public class PositionService {
 
     @Transactional
     public void add(AddPositionRequest req) {
-        // 确保基金信息存在
-        dataAggregator.getFundDetail(req.getFundCode());
+        // 确保基金信息存在，并同步净值数据
+        FundDetailDTO detail = dataAggregator.getFundDetail(req.getFundCode());
+        if (detail == null) {
+            // API 获取失败时尝试刷新
+            log.warn("获取基金详情失败，尝试刷新: {}", req.getFundCode());
+            var refreshResult = dataAggregator.refreshFundData(req.getFundCode());
+            if (refreshResult == null || refreshResult.getDetail() == null) {
+                throw new IllegalArgumentException("无法获取基金信息，请确认基金代码是否正确: " + req.getFundCode());
+            }
+        }
 
         BigDecimal amount = req.getAmount();
         BigDecimal shares = req.getShares();
