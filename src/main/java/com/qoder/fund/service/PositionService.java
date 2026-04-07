@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +35,7 @@ public class PositionService {
     private final FundMapper fundMapper;
     private final FundDataAggregator dataAggregator;
     private final BatchEstimateService batchEstimateService;
+    private final FundPersistenceService persistenceService;
 
     public List<PositionDTO> list(Long accountId) {
         QueryWrapper<Position> query = new QueryWrapper<>();
@@ -59,6 +61,29 @@ public class PositionService {
         Map<String, Fund> fundMap = fundCodes.isEmpty() ? new HashMap<>() :
                 fundMapper.selectBatchIds(fundCodes).stream()
                         .collect(Collectors.toMap(Fund::getCode, f -> f));
+
+        // 检查是否有基金信息缺失，尝试从API获取并保存（降级逻辑）
+        Set<String> missingFundCodes = fundCodes.stream()
+                .filter(code -> !fundMap.containsKey(code))
+                .collect(Collectors.toSet());
+        if (!missingFundCodes.isEmpty()) {
+            log.info("发现 {} 只基金信息缺失，尝试从API获取: {}", missingFundCodes.size(), missingFundCodes);
+            for (String fundCode : missingFundCodes) {
+                try {
+                    FundDetailDTO detail = dataAggregator.getFundDetail(fundCode);
+                    if (detail != null && detail.getName() != null && !detail.getName().isEmpty()) {
+                        // 重新查询刚保存的基金信息
+                        Fund fund = fundMapper.selectById(fundCode);
+                        if (fund != null) {
+                            fundMap.put(fundCode, fund);
+                            log.info("成功获取缺失的基金信息: {} - {}", fundCode, fund.getName());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("获取缺失基金信息失败: {}", fundCode, e);
+                }
+            }
+        }
 
         // 批量查询账户信息
         Map<Long, Account> accountMap = accountIds.isEmpty() ? new HashMap<>() :
@@ -90,6 +115,26 @@ public class PositionService {
             if (refreshResult == null || refreshResult.getDetail() == null) {
                 throw new IllegalArgumentException("无法获取基金信息，请确认基金代码是否正确: " + req.getFundCode());
             }
+            detail = refreshResult.getDetail();
+        }
+
+        // 再次检查基金名称是否存在
+        if (detail.getName() == null || detail.getName().isEmpty()) {
+            throw new IllegalArgumentException("无法获取基金名称，请确认基金代码是否正确: " + req.getFundCode());
+        }
+
+        // 主动同步净值历史数据（确保新基金有净值数据可用）
+        try {
+            LocalDate endDate = LocalDate.now();
+            LocalDate startDate = endDate.minusDays(30);
+            List<Map<String, Object>> navHistory = dataAggregator.getNavHistory(
+                    req.getFundCode(), startDate.toString(), endDate.toString());
+            if (navHistory != null && !navHistory.isEmpty()) {
+                persistenceService.saveNavHistory(req.getFundCode(), navHistory);
+                log.info("新增持仓，同步净值历史: {} - {} 条", req.getFundCode(), navHistory.size());
+            }
+        } catch (Exception e) {
+            log.warn("同步净值历史失败（将使用实时获取）: {}", req.getFundCode(), e);
         }
 
         BigDecimal amount = req.getAmount();
@@ -433,8 +478,19 @@ public class PositionService {
             dto.setFundType(fund.getType());
         }
 
-        // 最新净值（从批量结果获取）
+        // 最新净值（从批量结果获取，若缺失则单独获取）
         BigDecimal latestNav = batchResult.latestNavMap().get(p.getFundCode());
+        if (latestNav == null) {
+            // 降级：单独获取净值
+            try {
+                latestNav = dataAggregator.getLatestNav(p.getFundCode());
+                if (latestNav != null) {
+                    log.info("降级获取净值成功: {} -> {}", p.getFundCode(), latestNav);
+                }
+            } catch (Exception e) {
+                log.warn("降级获取净值失败: {}", p.getFundCode(), e);
+            }
+        }
         if (latestNav != null) {
             dto.setLatestNav(latestNav);
             BigDecimal marketValue = p.getShares().multiply(latestNav).setScale(2, RoundingMode.HALF_UP);

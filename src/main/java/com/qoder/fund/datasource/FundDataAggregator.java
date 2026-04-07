@@ -89,7 +89,14 @@ public class FundDataAggregator {
         }
 
         // 持久化基金基本信息（通过 Service 层）
-        persistenceService.saveFundInfo(detail);
+        boolean saved = persistenceService.saveFundInfo(detail);
+        if (!saved) {
+            log.warn("基金信息持久化失败: {} - {}", fundCode, detail.getName());
+            // 如果持久化失败且名称为空，返回null让调用方知道数据不完整
+            if (detail.getName() == null || detail.getName().isEmpty()) {
+                return null;
+            }
+        }
 
         return detail;
     }
@@ -148,6 +155,7 @@ public class FundDataAggregator {
 
         // 2. 数据库无数据时，从API获取最新一条净值
         try {
+            log.info("数据库无净值数据，从API获取: {}", fundCode);
             List<Map<String, Object>> navList = eastMoneyDataSource.getNavHistory(fundCode, "", "");
             if (!navList.isEmpty()) {
                 Map<String, Object> latest = navList.get(navList.size() - 1);
@@ -162,7 +170,9 @@ public class FundDataAggregator {
                         fundNav.setAccNav((BigDecimal) latest.get("accNav"));
                         fundNav.setDailyReturn((BigDecimal) latest.get("dailyReturn"));
                         fundNavMapper.insert(fundNav);
-                    } catch (Exception ignored) {
+                        log.info("成功保存最新净值: {} - {} -> {}", fundCode, navDate, nav);
+                    } catch (Exception e) {
+                        log.warn("保存净值失败(可能已存在): {} - {}", fundCode, navDate, e.getMessage());
                     }
                 }
                 return nav;

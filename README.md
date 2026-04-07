@@ -30,6 +30,7 @@
 - **数据聚合**：汇总多平台持仓，一屏掌握投资全貌
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
 - **实时估值**：多数据源实时估值，交易日盘中动态更新
+- **精确计算**：收益分析算法精确处理交易记录，排除本金变动干扰，真实反映投资收益
 
 ---
 
@@ -45,7 +46,7 @@
 - [x] **多账户管理** - 支持创建多个账户（支付宝、天天基金等）
 - [x] **实时估值** - 多数据源估值聚合，智能权重算法
 - [x] **资产配置** - 按行业分布展示资产配置饼图
-- [x] **收益分析** - 收益曲线、回撤分析、夏普比率、胜率统计
+- [x] **收益分析** - 收益曲线、回撤分析、夏普比率、胜率统计（精确算法，正确处理交易记录）
 - [x] **CLI 工具** - 命令行接口，支持定时任务、数据同步、收益播报
 - [x] **日志系统** - 分级日志、请求日志、API 日志拦截器
 
@@ -109,11 +110,11 @@ cd fund
 mysql -u root -p < src/main/resources/db/schema.sql
 mysql -u root -p < src/main/resources/db/data.sql
 
-# 4. 运行项目
-./mvnw spring-boot:run
+# 4. 运行项目（Web 模式）
+./mvnw spring-boot:run -Dspring-boot.run.arguments="--web"
 
 # 或使用 Maven
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.arguments="--web"
 ```
 
 后端服务默认运行在 http://localhost:8080

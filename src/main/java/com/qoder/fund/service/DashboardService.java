@@ -6,9 +6,11 @@ import com.qoder.fund.dto.PositionDTO;
 import com.qoder.fund.dto.ProfitAnalysisDTO;
 import com.qoder.fund.dto.ProfitTrendDTO;
 import com.qoder.fund.entity.FundNav;
+import com.qoder.fund.entity.FundTransaction;
 import com.qoder.fund.entity.Position;
 import com.qoder.fund.mapper.FundNavMapper;
 import com.qoder.fund.mapper.PositionMapper;
+import com.qoder.fund.mapper.TransactionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,7 @@ public class DashboardService {
     private final PositionService positionService;
     private final PositionMapper positionMapper;
     private final FundNavMapper fundNavMapper;
+    private final TransactionMapper transactionMapper;
 
     public DashboardDTO getDashboard() {
         List<PositionDTO> positions = positionService.list(null);
@@ -174,6 +177,7 @@ public class DashboardService {
 
     /**
      * 获取收益分析数据（收益曲线+回撤分析）
+     * 修复：正确计算历史收益，考虑交易记录
      */
     public ProfitAnalysisDTO getProfitAnalysis(int days) {
         ProfitAnalysisDTO dto = new ProfitAnalysisDTO();
@@ -196,7 +200,7 @@ public class DashboardService {
 
         QueryWrapper<FundNav> navQuery = new QueryWrapper<>();
         navQuery.in("fund_code", fundCodes);
-        navQuery.ge("nav_date", startDate);
+        navQuery.ge("nav_date", startDate.minusDays(7)); // 多获取几天用于查找最近净值
         navQuery.le("nav_date", endDate);
         navQuery.orderByAsc("nav_date");
         List<FundNav> allNavs = fundNavMapper.selectList(navQuery);
@@ -205,7 +209,20 @@ public class DashboardService {
         Map<String, List<FundNav>> navByFund = allNavs.stream()
                 .collect(Collectors.groupingBy(FundNav::getFundCode));
 
-        // 5. 计算每日市值
+        // 5. 获取所有交易记录
+        List<Long> positionIds = positions.stream()
+                .map(Position::getId)
+                .collect(Collectors.toList());
+        QueryWrapper<FundTransaction> txQuery = new QueryWrapper<>();
+        txQuery.in("position_id", positionIds);
+        txQuery.orderByAsc("trade_date");
+        List<FundTransaction> allTransactions = transactionMapper.selectList(txQuery);
+
+        // 按持仓ID分组
+        Map<Long, List<FundTransaction>> txByPosition = allTransactions.stream()
+                .collect(Collectors.groupingBy(FundTransaction::getPositionId));
+
+        // 6. 计算每日市值和收益
         List<String> dates = new ArrayList<>();
         List<BigDecimal> marketValues = new ArrayList<>();
         List<BigDecimal> dailyProfits = new ArrayList<>();
@@ -220,8 +237,15 @@ public class DashboardService {
 
             dates.add(date.format(fmt));
             BigDecimal dayMarketValue = BigDecimal.ZERO;
+            BigDecimal dayNetBuy = BigDecimal.ZERO; // 当日净买入金额
 
             for (Position p : positions) {
+                // 计算该日期的份额（根据交易记录）
+                BigDecimal sharesOnDate = calculateSharesOnDate(p, date, txByPosition.get(p.getId()));
+                if (sharesOnDate == null || sharesOnDate.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue; // 该日期还没有持仓
+                }
+
                 List<FundNav> fundNavs = navByFund.get(p.getFundCode());
                 if (fundNavs == null) {
                     continue;
@@ -229,18 +253,21 @@ public class DashboardService {
 
                 // 找到该日期或之前最近的净值
                 FundNav nav = findNearestNav(fundNavs, date);
-                if (nav != null && nav.getNav() != null && p.getShares() != null) {
+                if (nav != null && nav.getNav() != null) {
                     dayMarketValue = dayMarketValue.add(
-                            p.getShares().multiply(nav.getNav()).setScale(2, RoundingMode.HALF_UP)
+                            sharesOnDate.multiply(nav.getNav()).setScale(2, RoundingMode.HALF_UP)
                     );
                 }
+
+                // 计算当日净买入金额
+                dayNetBuy = dayNetBuy.add(calculateNetBuyOnDate(p.getId(), date, txByPosition.get(p.getId())));
             }
 
             marketValues.add(dayMarketValue);
 
-            // 计算每日收益
+            // 计算每日真实收益 = 市值变化 - 净买入金额
             if (prevMarketValue != null && prevMarketValue.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal dailyProfit = dayMarketValue.subtract(prevMarketValue);
+                BigDecimal dailyProfit = dayMarketValue.subtract(prevMarketValue).subtract(dayNetBuy);
                 dailyProfits.add(dailyProfit);
             } else {
                 dailyProfits.add(BigDecimal.ZERO);
@@ -252,38 +279,142 @@ public class DashboardService {
         dto.setMarketValues(marketValues);
         dto.setDailyProfits(dailyProfits);
 
-        // 6. 计算累计收益
+        // 7. 计算累计收益
         if (!marketValues.isEmpty() && !positions.isEmpty()) {
-            BigDecimal totalCost = positions.stream()
-                    .map(Position::getCostAmount)
-                    .filter(c -> c != null)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
             List<BigDecimal> cumulativeProfits = new ArrayList<>();
+            BigDecimal cumulativeProfit = BigDecimal.ZERO;
+            for (int i = 0; i < dailyProfits.size(); i++) {
+                cumulativeProfit = cumulativeProfit.add(dailyProfits.get(i));
+                cumulativeProfits.add(cumulativeProfit.setScale(2, RoundingMode.HALF_UP));
+            }
+            dto.setCumulativeProfits(cumulativeProfits);
+
+            // 累计收益率 = 累计收益 / 累计投入本金
             List<BigDecimal> cumulativeReturns = new ArrayList<>();
-            for (BigDecimal mv : marketValues) {
-                BigDecimal profit = mv.subtract(totalCost).setScale(2, RoundingMode.HALF_UP);
-                cumulativeProfits.add(profit);
-                if (totalCost.compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal returnRate = profit.divide(totalCost, 4, RoundingMode.HALF_UP)
+            BigDecimal totalInvested = BigDecimal.ZERO;
+            int dateIndex = 0;
+            for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+                int dayOfWeek = date.getDayOfWeek().getValue();
+                if (dayOfWeek > 5) {
+                    continue;
+                }
+
+                // 累计投入本金（截止到该日期）
+                for (Position p : positions) {
+                    totalInvested = totalInvested.add(
+                            calculateInvestedAmountOnDate(p, date, txByPosition.get(p.getId()))
+                    );
+                }
+
+                if (totalInvested.compareTo(BigDecimal.ZERO) > 0 && dateIndex < cumulativeProfits.size()) {
+                    BigDecimal returnRate = cumulativeProfits.get(dateIndex)
+                            .divide(totalInvested, 4, RoundingMode.HALF_UP)
                             .multiply(new BigDecimal("100"))
                             .setScale(2, RoundingMode.HALF_UP);
                     cumulativeReturns.add(returnRate);
                 } else {
                     cumulativeReturns.add(BigDecimal.ZERO);
                 }
+                dateIndex++;
             }
-            dto.setCumulativeProfits(cumulativeProfits);
             dto.setCumulativeReturns(cumulativeReturns);
         }
 
-        // 7. 计算回撤
+        // 8. 计算回撤
         dto.setDrawdown(calculateDrawdown(marketValues, dates));
 
-        // 8. 计算性能指标
+        // 9. 计算性能指标
         dto.setMetrics(calculateMetrics(dailyProfits, marketValues, dates));
 
         return dto;
+    }
+
+    /**
+     * 计算指定日期的持仓份额
+     */
+    private BigDecimal calculateSharesOnDate(Position position, LocalDate date,
+            List<FundTransaction> transactions) {
+        BigDecimal shares = BigDecimal.ZERO;
+
+        if (transactions != null) {
+            for (FundTransaction tx : transactions) {
+                if (!tx.getTradeDate().isAfter(date)) {
+                    if ("buy".equalsIgnoreCase(tx.getType()) && tx.getShares() != null) {
+                        shares = shares.add(tx.getShares());
+                    } else if ("sell".equalsIgnoreCase(tx.getType()) && tx.getShares() != null) {
+                        shares = shares.subtract(tx.getShares());
+                    }
+                }
+            }
+        }
+
+        // 如果没有交易记录或交易记录在该日期之后，检查持仓创建时间
+        if (shares.compareTo(BigDecimal.ZERO) == 0) {
+            // 如果持仓创建于该日期之前，使用当前份额（假设没有交易记录）
+            if (position.getCreatedAt() != null
+                    && !position.getCreatedAt().toLocalDate().isAfter(date)) {
+                // 如果该日期之后有交易记录，说明份额变化了，不使用当前份额
+                boolean hasLaterTx = transactions != null && transactions.stream()
+                        .anyMatch(tx -> tx.getTradeDate().isAfter(date));
+                if (!hasLaterTx) {
+                    shares = position.getShares();
+                }
+            }
+        }
+
+        return shares.compareTo(BigDecimal.ZERO) > 0 ? shares : null;
+    }
+
+    /**
+     * 计算指定日期的净买入金额（买入为正，卖出为负）
+     */
+    private BigDecimal calculateNetBuyOnDate(Long positionId, LocalDate date,
+            List<FundTransaction> transactions) {
+        BigDecimal netBuy = BigDecimal.ZERO;
+
+        if (transactions != null) {
+            for (FundTransaction tx : transactions) {
+                if (tx.getTradeDate().equals(date)) {
+                    if ("buy".equalsIgnoreCase(tx.getType()) && tx.getAmount() != null) {
+                        netBuy = netBuy.add(tx.getAmount());
+                    } else if ("sell".equalsIgnoreCase(tx.getType()) && tx.getAmount() != null) {
+                        netBuy = netBuy.subtract(tx.getAmount());
+                    }
+                }
+            }
+        }
+
+        return netBuy;
+    }
+
+    /**
+     * 计算截止到指定日期的累计投入金额
+     */
+    private BigDecimal calculateInvestedAmountOnDate(Position position, LocalDate date,
+            List<FundTransaction> transactions) {
+        BigDecimal invested = BigDecimal.ZERO;
+
+        if (transactions != null) {
+            for (FundTransaction tx : transactions) {
+                if (!tx.getTradeDate().isAfter(date)) {
+                    if ("buy".equalsIgnoreCase(tx.getType()) && tx.getAmount() != null) {
+                        invested = invested.add(tx.getAmount());
+                    } else if ("sell".equalsIgnoreCase(tx.getType()) && tx.getAmount() != null) {
+                        invested = invested.subtract(tx.getAmount());
+                    }
+                }
+            }
+        }
+
+        // 如果没有交易记录，使用持仓的成本金额（假设持仓创建于该日期之前）
+        if (invested.compareTo(BigDecimal.ZERO) == 0 && position.getCostAmount() != null) {
+            if (position.getCreatedAt() != null
+                    && !position.getCreatedAt().toLocalDate().isAfter(date)) {
+                invested = position.getCostAmount();
+            }
+        }
+
+        return invested;
     }
 
     /**
@@ -413,30 +544,36 @@ public class DashboardService {
             }
         }
 
-        // 波动率（日收益标准差年化）
-        if (!dailyProfits.isEmpty()) {
-            BigDecimal mean = dailyProfits.stream()
-                    .reduce(BigDecimal.ZERO, BigDecimal::add)
-                    .divide(BigDecimal.valueOf(dailyProfits.size()), 4, RoundingMode.HALF_UP);
+        // 波动率（基于日收益率计算）
+        List<BigDecimal> dailyReturns = new ArrayList<>();
+        for (int i = 0; i < dailyProfits.size(); i++) {
+            BigDecimal mv = marketValues.get(i);
+            BigDecimal profit = dailyProfits.get(i);
+            // 只有在有市值且市值大于0时才计算收益率
+            if (mv != null && mv.compareTo(BigDecimal.ZERO) > 0 && profit != null) {
+                BigDecimal ret = profit.divide(mv, 6, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100"));
+                dailyReturns.add(ret);
+            }
+        }
 
-            double variance = dailyProfits.stream()
-                    .mapToDouble(p -> p.subtract(mean).pow(2).doubleValue())
+        if (!dailyReturns.isEmpty()) {
+            BigDecimal meanReturn = dailyReturns.stream()
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .divide(BigDecimal.valueOf(dailyReturns.size()), 4, RoundingMode.HALF_UP);
+
+            double variance = dailyReturns.stream()
+                    .mapToDouble(r -> r.subtract(meanReturn).pow(2).doubleValue())
                     .average()
                     .orElse(0);
 
             double stdDev = Math.sqrt(variance);
             // 年化波动率 = 日波动率 * sqrt(252)
             double annualizedVol = stdDev * Math.sqrt(252);
-            // 转换为百分比（相对于平均市值）
-            BigDecimal avgMarketValue = marketValues.stream()
-                    .reduce(BigDecimal.ZERO, BigDecimal::add)
-                    .divide(BigDecimal.valueOf(marketValues.size()), 2, RoundingMode.HALF_UP);
-            if (avgMarketValue.compareTo(BigDecimal.ZERO) > 0) {
-                metrics.setVolatility(BigDecimal.valueOf(annualizedVol / avgMarketValue.doubleValue() * 100)
-                        .setScale(2, RoundingMode.HALF_UP));
-            } else {
-                metrics.setVolatility(BigDecimal.ZERO);
-            }
+            metrics.setVolatility(BigDecimal.valueOf(annualizedVol)
+                    .setScale(2, RoundingMode.HALF_UP));
+        } else {
+            metrics.setVolatility(BigDecimal.ZERO);
         }
 
         // 胜率

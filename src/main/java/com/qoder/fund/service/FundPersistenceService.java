@@ -31,11 +31,18 @@ public class FundPersistenceService {
 
     /**
      * 保存或更新基金基本信息
+     * @return true 表示保存成功，false 表示保存失败
      */
     @Transactional
-    public void saveFundInfo(FundDetailDTO detail) {
+    public boolean saveFundInfo(FundDetailDTO detail) {
         if (detail == null || detail.getCode() == null) {
-            return;
+            return false;
+        }
+
+        // 基金名称是必填字段，如果为空则无法保存
+        if (detail.getName() == null || detail.getName().isEmpty()) {
+            log.warn("基金名称为空，无法保存: {}", detail.getCode());
+            return false;
         }
 
         try {
@@ -70,12 +77,14 @@ public class FundPersistenceService {
 
             if (existing == null) {
                 fundMapper.insert(fund);
-                log.info("新增基金: {}", detail.getCode());
+                log.info("新增基金: {} - {}", detail.getCode(), detail.getName());
             } else {
                 fundMapper.updateById(fund);
             }
+            return true;
         } catch (Exception e) {
-            log.warn("保存基金信息失败: {}", detail.getCode(), e);
+            log.error("保存基金信息失败: {}", detail.getCode(), e);
+            return false;
         }
     }
 

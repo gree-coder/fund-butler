@@ -529,32 +529,39 @@ public class EastMoneyDataSource implements FundDataSource {
             if (body != null && body.contains("<tbody>")) {
                 List<Map<String, Object>> holdings = new ArrayList<>();
 
-                // 解析持仓披露日期（如：截止日期：2024-12-31 或 报告期：2024年年报）
-                Pattern datePattern = Pattern.compile("(?:截止日期|报告期)[：:]\\s*(\\d{4})[-年](\\d{1,2})[-月]?(\\d{1,2})");
+                // 解析持仓披露日期（格式：截止至：<font class='px12'>2025-12-31</font> 或 截止日期：2024-12-31）
+                Pattern datePattern = Pattern.compile("截止(?:至|日期)[：:][^<]*<[^>]*>(\\d{4})-(\\d{2})-(\\d{2})");
                 Matcher dateMatcher = datePattern.matcher(body);
                 if (dateMatcher.find()) {
                     String year = dateMatcher.group(1);
                     String month = dateMatcher.group(2);
                     String day = dateMatcher.group(3);
-                    dto.setHoldingsDate(String.format("%s-%02d-%02d",
-                            year, Integer.parseInt(month), Integer.parseInt(day)));
+                    dto.setHoldingsDate(String.format("%s-%s-%s", year, month, day));
                 } else {
-                    // 尝试匹配季度报告（如：2024年第四季度）
-                    Pattern quarterPattern = Pattern.compile("(\\d{4})年第?(一|二|三|四)季度");
-                    Matcher quarterMatcher = quarterPattern.matcher(body);
-                    if (quarterMatcher.find()) {
-                        int year = Integer.parseInt(quarterMatcher.group(1));
-                        String quarter = quarterMatcher.group(2);
-                        int quarterNum = switch (quarter) {
-                            case "一" -> 1;
-                            case "二" -> 2;
-                            case "三" -> 3;
-                            case "四" -> 4;
-                            default -> 1;
-                        };
-                        // Q1=3月底, Q2=6月底, Q3=9月底, Q4=12月底
-                        int month = quarterNum * 3;
-                        dto.setHoldingsDate(String.format("%d-%02d-30", year, month));
+                    // 尝试匹配旧格式（报告期：2024年年报）
+                    Pattern legacyDatePattern = Pattern.compile("(?:截止日期|报告期)[：:]\\s*(\\d{4})[-年](\\d{1,2})[-月]?(\\d{1,2})");
+                    Matcher legacyMatcher = legacyDatePattern.matcher(body);
+                    if (legacyMatcher.find()) {
+                        dto.setHoldingsDate(String.format("%s-%02d-%02d",
+                                legacyMatcher.group(1), Integer.parseInt(legacyMatcher.group(2)), Integer.parseInt(legacyMatcher.group(3))));
+                    } else {
+                        // 尝试匹配季度报告（如：2025年4季度股票投资明细）
+                        Pattern quarterPattern = Pattern.compile("(\\d{4})年第?(\\d|一|二|三|四)季度");
+                        Matcher quarterMatcher = quarterPattern.matcher(body);
+                        if (quarterMatcher.find()) {
+                            int year = Integer.parseInt(quarterMatcher.group(1));
+                            String quarter = quarterMatcher.group(2);
+                            int quarterNum = switch (quarter) {
+                                case "一", "1" -> 1;
+                                case "二", "2" -> 2;
+                                case "三", "3" -> 3;
+                                case "四", "4" -> 4;
+                                default -> 1;
+                            };
+                            // Q1=3月底, Q2=6月底, Q3=9月底, Q4=12月底
+                            int month = quarterNum * 3;
+                            dto.setHoldingsDate(String.format("%d-%02d-30", year, month));
+                        }
                     }
                 }
 
