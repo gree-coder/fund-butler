@@ -43,3 +43,8 @@ fund-web/.env.local
 ### Environment ###
 .env
 *.env.local
+
+### Logs ###
+logs/
+*.log
+*.log.*
