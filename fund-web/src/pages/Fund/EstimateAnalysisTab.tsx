@@ -1,11 +1,37 @@
 import { useEffect, useState } from 'react';
 import { Card, Table, Tag, Progress, Tooltip, Empty, Spin, Statistic, Row, Col } from 'antd';
 import { InfoCircleOutlined, RiseOutlined, FallOutlined, MinusOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { estimateAnalysisApi, type EstimateAnalysisData } from '../../api/estimateAnalysis';
 import PriceChange from '../../components/PriceChange';
 
 interface Props {
   fundCode: string;
+}
+
+/**
+ * 格式化补偿时间为用户友好的格式
+ * - 今天：今天 18:30
+ * - 昨天：昨天 20:00
+ * - 今年：04-01 20:00
+ * - 去年：2025-04-01 20:00
+ */
+function formatCompensatedAt(time: string | undefined): string {
+  if (!time) return '--';
+  
+  const m = dayjs(time);
+  const now = dayjs();
+  
+  if (m.isSame(now, 'day')) {
+    return `今天 ${m.format('HH:mm')}`;
+  }
+  if (m.isSame(now.subtract(1, 'day'), 'day')) {
+    return `昨天 ${m.format('HH:mm')}`;
+  }
+  if (m.isSame(now, 'year')) {
+    return m.format('MM-DD HH:mm');
+  }
+  return m.format('YYYY-MM-DD HH:mm');
 }
 
 export function EstimateAnalysisTab({ fundCode }: Props) {
@@ -176,10 +202,10 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
       title: '补偿前',
       key: 'before',
       render: (_: unknown, record: { beforeNav?: number; beforeReturn?: number }) =>
-        record.beforeNav ? (
+        record.beforeNav != null ? (
           <div>
             <div>净值: {record.beforeNav.toFixed(4)}</div>
-            <div><PriceChange value={record.beforeReturn || 0} /></div>
+            <div><PriceChange value={record.beforeReturn ?? 0} /></div>
           </div>
         ) : (
           '--'
@@ -188,17 +214,26 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
     {
       title: '补偿后',
       key: 'after',
-      render: (_: unknown, record: { afterNav?: number; afterReturn?: number }) => (
-        <div>
-          <div>净值: {record.afterNav?.toFixed(4) || '--'}</div>
-          <div><PriceChange value={record.afterReturn || 0} /></div>
-        </div>
-      ),
+      render: (_: unknown, record: { afterNav?: number; afterReturn?: number }) =>
+        record.afterNav != null ? (
+          <div>
+            <div>净值: {record.afterNav.toFixed(4)}</div>
+            <div><PriceChange value={record.afterReturn ?? 0} /></div>
+          </div>
+        ) : (
+          '--'
+        ),
     },
     {
       title: '数据来源',
       dataIndex: 'source',
       key: 'source',
+    },
+    {
+      title: '补偿时间',
+      dataIndex: 'compensatedAt',
+      key: 'compensatedAt',
+      render: (time: string) => formatCompensatedAt(time),
     },
     {
       title: '说明',

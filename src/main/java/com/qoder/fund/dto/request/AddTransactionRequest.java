@@ -16,10 +16,8 @@ public class AddTransactionRequest {
     @NotNull(message = "交易金额不能为空")
     private BigDecimal amount;
 
-    @NotNull(message = "交易份额不能为空")
     private BigDecimal shares;
 
-    @NotNull(message = "成交净值不能为空")
     private BigDecimal price;
 
     private BigDecimal fee;

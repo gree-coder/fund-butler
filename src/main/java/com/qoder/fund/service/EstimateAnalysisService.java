@@ -17,10 +17,13 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -85,16 +88,17 @@ public class EstimateAnalysisService {
             current.setActualReturnDelayed(actualItem.isDelayed());
         }
 
-        // 构建各数据源估值列表(排除 actual)
+        // 先查找 smart 数据源（权重从中获取）
+        EstimateSourceDTO.EstimateItem smartItem = sourceDTO.getSources().stream()
+                .filter(s -> "smart".equals(s.getKey()))
+                .findFirst()
+                .orElse(null);
+
+        // 构建各数据源估值列表(排除 actual 和 smart)
         List<EstimateAnalysisDTO.SourceEstimate> sources = new ArrayList<>();
-        EstimateSourceDTO.EstimateItem smartItem = null;
 
         for (EstimateSourceDTO.EstimateItem item : sourceDTO.getSources()) {
-            if ("smart".equals(item.getKey())) {
-                smartItem = item;
-                continue;
-            }
-            if ("actual".equals(item.getKey())) {
+            if ("smart".equals(item.getKey()) || "actual".equals(item.getKey())) {
                 continue;
             }
 
@@ -228,12 +232,16 @@ public class EstimateAnalysisService {
 
     /**
      * 构建数据补偿记录
+     * 显示每个数据源的预估与实际净值对比
+     * 包含：已有净值的日期（预估vs实际） + 今日预估（待验证）
      */
     private List<EstimateAnalysisDTO.CompensationLog> buildCompensationLogs(String fundCode) {
         List<EstimateAnalysisDTO.CompensationLog> logs = new ArrayList<>();
 
-        // 获取最近7天的净值记录，检查是否有更新
-        LocalDate startDate = LocalDate.now().minusDays(7);
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(7);
+
+        // 获取最近7天的净值记录
         List<FundNav> navs = fundNavMapper.selectList(
                 new QueryWrapper<FundNav>()
                         .eq("fund_code", fundCode)
@@ -241,53 +249,144 @@ public class EstimateAnalysisService {
                         .orderByDesc("nav_date")
         );
 
-        // 获取预测记录
+        // 获取预测记录（各数据源）
         List<EstimatePrediction> predictions = estimatePredictionMapper.selectList(
                 new QueryWrapper<EstimatePrediction>()
                         .eq("fund_code", fundCode)
                         .ge("predict_date", startDate)
-                        .isNotNull("actual_return")
                         .orderByDesc("predict_date")
         );
 
-        // 按日期分组处理
+        // 按日期分组
         Map<LocalDate, List<EstimatePrediction>> predByDate = predictions.stream()
                 .collect(Collectors.groupingBy(EstimatePrediction::getPredictDate));
 
+        // 已有净值的日期
+        Set<LocalDate> navDates = navs.stream()
+                .map(FundNav::getNavDate)
+                .collect(Collectors.toSet());
+
+        // 按数据源分组（用于确定显示顺序）
+        List<String> sourceOrder = List.of("smart", "eastmoney", "sina", "tencent", "stock");
+
+        // 1. 处理已有净值的日期（预估 vs 实际）
         for (FundNav nav : navs) {
             LocalDate date = nav.getNavDate();
             List<EstimatePrediction> dayPreds = predByDate.get(date);
 
             if (dayPreds != null && !dayPreds.isEmpty()) {
-                // 有预测记录，说明是预测数据补偿
-                EstimatePrediction pred = dayPreds.get(0);
+                // 有预测记录，按数据源分组显示
+                Map<String, List<EstimatePrediction>> predBySource = dayPreds.stream()
+                        .collect(Collectors.groupingBy(EstimatePrediction::getSourceKey));
 
-                EstimateAnalysisDTO.CompensationLog log = new EstimateAnalysisDTO.CompensationLog();
-                log.setDate(date);
-                log.setBeforeNav(pred.getPredictedNav());
-                log.setBeforeReturn(pred.getPredictedReturn());
-                log.setAfterNav(nav.getNav());
-                log.setAfterReturn(nav.getDailyReturn());
-                log.setSource(pred.getSourceKey());
-                log.setType(EstimateAnalysisDTO.CompensationType.PREDICT);
-                log.setReason("预测数据补偿: " + getSourceLabel(pred.getSourceKey()));
-                logs.add(log);
+                // 按预设顺序显示各数据源
+                for (String sourceKey : sourceOrder) {
+                    List<EstimatePrediction> sourcePreds = predBySource.get(sourceKey);
+                    if (sourcePreds != null && !sourcePreds.isEmpty()) {
+                        EstimatePrediction pred = sourcePreds.get(0);
+                        EstimateAnalysisDTO.CompensationLog log = buildCompensationLog(date, pred, nav);
+                        logs.add(log);
+                    }
+                }
+
+                // 显示其他未在预设顺序中的数据源
+                for (Map.Entry<String, List<EstimatePrediction>> entry : predBySource.entrySet()) {
+                    if (!sourceOrder.contains(entry.getKey())) {
+                        EstimatePrediction pred = entry.getValue().get(0);
+                        EstimateAnalysisDTO.CompensationLog log = buildCompensationLog(date, pred, nav);
+                        logs.add(log);
+                    }
+                }
             } else {
-                // 无预测记录，说明是实际净值直接录入
+                // 无预测记录，显示官方净值发布
                 EstimateAnalysisDTO.CompensationLog log = new EstimateAnalysisDTO.CompensationLog();
                 log.setDate(date);
                 log.setAfterNav(nav.getNav());
                 log.setAfterReturn(nav.getDailyReturn());
                 log.setSource("official");
                 log.setType(EstimateAnalysisDTO.CompensationType.ACTUAL);
+                log.setCompensatedAt(LocalDateTime.of(date, LocalTime.of(20, 0))); // 基金净值通常晚上20:00公布
                 log.setReason("基金公司官方净值发布");
                 logs.add(log);
             }
         }
 
+        // 2. 处理今日预估（还没有实际净值的预测记录）
+        List<EstimatePrediction> todayPreds = predByDate.get(today);
+        if (todayPreds != null && !todayPreds.isEmpty() && !navDates.contains(today)) {
+            Map<String, List<EstimatePrediction>> predBySource = todayPreds.stream()
+                    .collect(Collectors.groupingBy(EstimatePrediction::getSourceKey));
+
+            for (String sourceKey : sourceOrder) {
+                List<EstimatePrediction> sourcePreds = predBySource.get(sourceKey);
+                if (sourcePreds != null && !sourcePreds.isEmpty()) {
+                    EstimatePrediction pred = sourcePreds.get(0);
+                    EstimateAnalysisDTO.CompensationLog log = new EstimateAnalysisDTO.CompensationLog();
+                    log.setDate(today);
+                    // 补偿前为空，补偿后为预测值
+                    log.setAfterNav(pred.getPredictedNav());
+                    log.setAfterReturn(pred.getPredictedReturn());
+                    log.setSource(pred.getSourceKey());
+                    log.setType(EstimateAnalysisDTO.CompensationType.PREDICT);
+                    log.setCompensatedAt(LocalDateTime.now()); // 快照时间
+                    log.setReason(getSourceLabel(pred.getSourceKey()) + "预估（待验证）");
+                    logs.add(log);
+                }
+            }
+
+            // 显示其他未在预设顺序中的数据源
+            for (Map.Entry<String, List<EstimatePrediction>> entry : predBySource.entrySet()) {
+                if (!sourceOrder.contains(entry.getKey())) {
+                    EstimatePrediction pred = entry.getValue().get(0);
+                    EstimateAnalysisDTO.CompensationLog log = new EstimateAnalysisDTO.CompensationLog();
+                    log.setDate(today);
+                    // 补偿前为空，补偿后为预测值
+                    log.setAfterNav(pred.getPredictedNav());
+                    log.setAfterReturn(pred.getPredictedReturn());
+                    log.setSource(pred.getSourceKey());
+                    log.setType(EstimateAnalysisDTO.CompensationType.PREDICT);
+                    log.setCompensatedAt(LocalDateTime.now()); // 快照时间
+                    log.setReason(getSourceLabel(pred.getSourceKey()) + "预估（待验证）");
+                    logs.add(log);
+                }
+            }
+        }
+
         return logs.stream()
-                .sorted(Comparator.comparing(EstimateAnalysisDTO.CompensationLog::getDate).reversed())
+                .sorted(Comparator.comparing(EstimateAnalysisDTO.CompensationLog::getDate).reversed()
+                        .thenComparing(log -> sourceOrder.indexOf(log.getSource())))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 构建单条补偿记录
+     */
+    private EstimateAnalysisDTO.CompensationLog buildCompensationLog(LocalDate date, EstimatePrediction pred, FundNav nav) {
+        EstimateAnalysisDTO.CompensationLog log = new EstimateAnalysisDTO.CompensationLog();
+        log.setDate(date);
+        log.setBeforeNav(pred.getPredictedNav());
+        log.setBeforeReturn(pred.getPredictedReturn());
+        log.setAfterNav(nav.getNav());
+        log.setAfterReturn(nav.getDailyReturn());
+        log.setSource(pred.getSourceKey());
+        // 补偿时间：净值公布时间（通常晚上20:00）
+        log.setCompensatedAt(LocalDateTime.of(date, LocalTime.of(20, 0)));
+
+        // 判断是否有实际值进行对比
+        if (pred.getActualReturn() != null) {
+            log.setType(EstimateAnalysisDTO.CompensationType.PREDICT);
+            // 计算误差
+            BigDecimal navError = pred.getReturnError() != null ? pred.getReturnError() : BigDecimal.ZERO;
+            String errorSign = navError.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
+            log.setReason(String.format("%s预估 vs 实际 (%s%.2f%%)",
+                    getSourceLabel(pred.getSourceKey()), errorSign, navError));
+        } else {
+            // 无实际值对比，仅记录预估
+            log.setType(EstimateAnalysisDTO.CompensationType.PREDICT);
+            log.setReason(getSourceLabel(pred.getSourceKey()) + "预估（待验证）");
+        }
+
+        return log;
     }
 
     private String getSourceLabel(String key) {

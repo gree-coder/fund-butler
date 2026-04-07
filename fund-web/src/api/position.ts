@@ -13,8 +13,8 @@ export interface AddPositionParams {
 export interface AddTransactionParams {
   type: 'BUY' | 'SELL' | 'DIVIDEND';
   amount: number;
-  shares: number;
-  price: number;
+  shares?: number;
+  price?: number;
   fee?: number;
   tradeDate: string;
 }

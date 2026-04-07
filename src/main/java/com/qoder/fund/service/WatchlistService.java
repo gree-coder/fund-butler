@@ -125,6 +125,11 @@ public class WatchlistService {
         watchlistMapper.deleteById(id);
     }
 
+    public void removeByCode(String fundCode) {
+        watchlistMapper.delete(
+                new QueryWrapper<Watchlist>().eq("fund_code", fundCode));
+    }
+
     public Set<String> checkExists(List<String> fundCodes) {
         if (fundCodes == null || fundCodes.isEmpty()) {
             return Set.of();

@@ -35,6 +35,12 @@ public class WatchlistController {
         return Result.success();
     }
 
+    @DeleteMapping("/code/{fundCode}")
+    public Result<Void> removeByCode(@PathVariable String fundCode) {
+        watchlistService.removeByCode(fundCode);
+        return Result.success();
+    }
+
     @GetMapping("/check")
     public Result<Set<String>> check(@RequestParam List<String> codes) {
         return Result.success(watchlistService.checkExists(codes));

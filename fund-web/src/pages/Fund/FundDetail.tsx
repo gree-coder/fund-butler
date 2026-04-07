@@ -138,7 +138,7 @@ const FundDetail: React.FC = () => {
           <div style={{ flex: 1, background: '#f0f0f0', borderRadius: 3, height: 8 }}>
             <div style={{ width: `${Math.min(v * 2, 100)}%`, background: '#1677FF', borderRadius: 3, height: '100%' }} />
           </div>
-          <span style={{ width: 36, textAlign: 'right', fontSize: 12 }}>{v}%</span>
+          <span style={{ width: 36, textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>{v.toFixed(2)}%</span>
         </div>
       ),
     },
@@ -182,11 +182,17 @@ const FundDetail: React.FC = () => {
                 icon={inWatchlist ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
                 style={inWatchlist ? { color: '#faad14' } : undefined}
                 onClick={() => {
-                  if (inWatchlist) return;
-                  watchlistApi.add({ fundCode: detail.code }).then(() => {
-                    message.success('已添加到自选');
-                    setInWatchlist(true);
-                  }).catch(() => {});
+                  if (inWatchlist) {
+                    watchlistApi.removeByCode(detail.code).then(() => {
+                      message.success('已取消自选');
+                      setInWatchlist(false);
+                    }).catch(() => {});
+                  } else {
+                    watchlistApi.add({ fundCode: detail.code }).then(() => {
+                      message.success('已添加到自选');
+                      setInWatchlist(true);
+                    }).catch(() => {});
+                  }
                 }}
               >{inWatchlist ? '已自选' : '自选'}</Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/portfolio/add?fundCode=${detail.code}`)}>加持仓</Button>
@@ -272,7 +278,7 @@ const FundDetail: React.FC = () => {
               <>
                 {/* NAV Chart */}
                 <Card className="fund-card-static" title={<span style={{ fontWeight: 600 }}>净值走势</span>} extra={<Segmented size="small" options={PERIODS} value={period} onChange={(v) => setPeriod(v as string)} />} style={{ marginBottom: 16 }}>
-                  <ReactECharts option={chartOption} theme="fundTheme" style={{ height: 350 }} />
+                  <ReactECharts option={chartOption} theme="fundTheme" style={{ height: 350 }} notMerge={true} key={period} />
                 </Card>
 
                 {/* Performance */}

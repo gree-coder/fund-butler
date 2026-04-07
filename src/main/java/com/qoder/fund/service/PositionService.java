@@ -137,32 +137,62 @@ public class PositionService {
             throw new IllegalArgumentException("持仓不存在");
         }
 
+        BigDecimal amount = req.getAmount();
+        BigDecimal shares = req.getShares();
+        BigDecimal price = req.getPrice();
+
+        // 自动计算 shares 和 price（如果未提供）
+        if (shares == null && price == null) {
+            BigDecimal latestNav = dataAggregator.getLatestNav(position.getFundCode());
+            if (latestNav == null || latestNav.compareTo(BigDecimal.ZERO) == 0) {
+                latestNav = dataAggregator.getNavByDate(position.getFundCode(), req.getTradeDate());
+            }
+            if (latestNav == null || latestNav.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("无法获取该日期的净值，请手动填写份额");
+            }
+            price = latestNav;
+            shares = amount.divide(latestNav, 4, RoundingMode.HALF_UP);
+        } else if (shares == null && price != null) {
+            if (price.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("成交净值不能为零");
+            }
+            shares = amount.divide(price, 4, RoundingMode.HALF_UP);
+        } else if (shares != null && price == null) {
+            if (shares.compareTo(BigDecimal.ZERO) == 0) {
+                throw new IllegalArgumentException("交易份额不能为零");
+            }
+            price = amount.divide(shares, 4, RoundingMode.HALF_UP);
+        }
+
         FundTransaction txn = new FundTransaction();
         txn.setPositionId(positionId);
         txn.setFundCode(position.getFundCode());
         txn.setType(req.getType());
-        txn.setAmount(req.getAmount());
-        txn.setShares(req.getShares());
-        txn.setPrice(req.getPrice());
+        txn.setAmount(amount);
+        txn.setShares(shares);
+        txn.setPrice(price);
         txn.setFee(req.getFee() != null ? req.getFee() : BigDecimal.ZERO);
         txn.setTradeDate(req.getTradeDate());
         transactionMapper.insert(txn);
 
+        final BigDecimal finalShares = shares;
+        final BigDecimal finalPrice = price;
+
         // 更新持仓
         switch (req.getType()) {
             case "BUY" -> {
-                position.setShares(position.getShares().add(req.getShares()));
-                position.setCostAmount(position.getCostAmount().add(req.getAmount()));
+                position.setShares(position.getShares().add(finalShares));
+                position.setCostAmount(position.getCostAmount().add(amount));
             }
             case "SELL" -> {
                 // 检查份额是否足够
-                if (position.getShares().compareTo(req.getShares()) < 0) {
+                if (position.getShares().compareTo(finalShares) < 0) {
                     throw new IllegalArgumentException("卖出份额不能大于持仓份额");
                 }
                 // 使用加权平均成本计算卖出成本
                 BigDecimal avgCost = position.getCostAmount().divide(position.getShares(), 4, RoundingMode.HALF_UP);
-                BigDecimal sellCost = req.getShares().multiply(avgCost);
-                position.setShares(position.getShares().subtract(req.getShares()));
+                BigDecimal sellCost = finalShares.multiply(avgCost);
+                position.setShares(position.getShares().subtract(finalShares));
                 position.setCostAmount(position.getCostAmount().subtract(sellCost));
             }
             default -> throw new IllegalArgumentException("Invalid transaction type: " + req.getType());
@@ -455,6 +485,11 @@ public class PositionService {
                             dto.setActualNavDate(source.getDelayedDate());  // 设置延迟数据的日期
                         });
             }
+        }
+
+        // 行业分布数据
+        if (fund != null && fund.getIndustryDist() != null) {
+            dto.setIndustryDist(fund.getIndustryDist());
         }
 
         return dto;

@@ -1,4 +1,5 @@
 -- 初始化默认投资账户
+-- 使用 INSERT IGNORE 防止重复插入，并使用固定ID避免重复记录
 INSERT IGNORE INTO account (id, name, platform, icon) VALUES
 (1, '支付宝', 'alipay', 'alipay'),
 (2, '微信理财通', 'wechat', 'wechat'),

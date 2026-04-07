@@ -114,9 +114,30 @@ public class EastMoneyDataSource implements FundDataSource {
 
     @Override
     public List<Map<String, Object>> getNavHistory(String fundCode, String startDate, String endDate) {
-        // 1. 先尝试lsjz API
+        // 计算请求的日期范围
+        java.time.LocalDate requestStart = java.time.LocalDate.parse(startDate);
+        java.time.LocalDate requestEnd = java.time.LocalDate.parse(endDate);
+        long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(requestStart, requestEnd);
+        
+        // 如果请求超过60天的数据，直接使用pingzhongdata（包含完整历史）
+        // lsjz API 有分页限制，无法一次性获取大量历史数据
+        if (daysBetween > 60) {
+            return fetchNavFromPingzhong(fundCode, startDate, endDate);
+        }
+        
+        // 1. 先尝试lsjz API（适合获取近期数据）
         List<Map<String, Object>> results = fetchNavFromLsjz(fundCode, startDate, endDate);
-        if (!results.isEmpty()) return results;
+        if (!results.isEmpty()) {
+            // 检查返回数据是否覆盖了请求的日期范围
+            if (!results.isEmpty()) {
+                java.time.LocalDate dataStart = java.time.LocalDate.parse((String) results.get(results.size() - 1).get("navDate"));
+                // 如果数据起始日期晚于请求的起始日期超过7天，降级到pingzhongdata
+                if (java.time.temporal.ChronoUnit.DAYS.between(requestStart, dataStart) > 7) {
+                    return fetchNavFromPingzhong(fundCode, startDate, endDate);
+                }
+            }
+            return results;
+        }
 
         // 2. 降级到pingzhongdata的Data_netWorthTrend
         return fetchNavFromPingzhong(fundCode, startDate, endDate);
@@ -758,10 +779,61 @@ public class EastMoneyDataSource implements FundDataSource {
         return null;
     }
 
+    /**
+     * 提取JS数组变量（支持嵌套对象）
+     * 使用括号计数法正确提取完整的数组内容
+     */
     private String extractJsArray(String js, String varName) {
-        Pattern pattern = Pattern.compile("var\\s+" + varName + "\\s*=\\s*(\\[.*?\\]|\"[^\"]*\"|'[^']*')\\s*;", Pattern.DOTALL);
-        Matcher matcher = pattern.matcher(js);
-        return matcher.find() ? matcher.group(1) : null;
+        // 先找到变量声明的位置
+        String prefix = "var " + varName + " = [";
+        int startIndex = js.indexOf(prefix);
+        if (startIndex < 0) {
+            // 尝试带空格的格式
+            prefix = "var " + varName + "=[";
+            startIndex = js.indexOf(prefix);
+            if (startIndex < 0) return null;
+        }
+        
+        // 找到数组开始位置
+        int arrayStart = js.indexOf('[', startIndex);
+        if (arrayStart < 0) return null;
+        
+        // 使用括号计数找到数组结束位置
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        
+        for (int i = arrayStart; i < js.length(); i++) {
+            char c = js.charAt(i);
+            
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            
+            if (c == '\\' && inString) {
+                escape = true;
+                continue;
+            }
+            
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            
+            if (!inString) {
+                if (c == '[') {
+                    depth++;
+                } else if (c == ']') {
+                    depth--;
+                    if (depth == 0) {
+                        return js.substring(arrayStart, i + 1);
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
 
     private BigDecimal parseBigDecimal(String value) {

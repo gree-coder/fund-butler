@@ -1,11 +1,25 @@
 import client from './client';
 
+export interface IndustryItem {
+  industry: string;
+  ratio: number;
+  marketValue: number;
+}
+
 export interface DashboardData {
   totalAsset: number;
   totalProfit: number;
   totalProfitRate: number;
   todayProfit: number;
+  /** 今日收益是否为预估值 */
+  todayProfitIsEstimate: boolean;
+  /** 今日预估总收益金额 */
+  todayEstimateProfit: number;
+  /** 今日预估涨幅 */
+  todayEstimateReturn: number;
   positions: PositionItem[];
+  /** 聚合行业分布 */
+  industryDistribution: IndustryItem[];
 }
 
 export interface PositionItem {
@@ -18,15 +32,19 @@ export interface PositionItem {
   latestNav: number;
   estimateNav: number;
   estimateReturn: number;
+  /** 今日预估收益金额 */
+  estimateProfit: number;
   actualNav?: number;
   actualReturn?: number;
   actualReturnDelayed?: boolean;
-  actualNavDate?: string;  // 实际涨幅对应的净值日期(QDII延迟时显示)
+  actualNavDate?: string;
   marketValue: number;
   profit: number;
   profitRate: number;
   accountId: number;
   accountName: string;
+  /** 行业分布 */
+  industryDist?: { industry: string; ratio: number }[];
 }
 
 export interface ProfitTrend {

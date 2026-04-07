@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Tabs, Button, Divider, Popconfirm, Modal, Form, Select, InputNumber, DatePicker, message } from 'antd';
-import { PlusOutlined, DeleteOutlined, TransactionOutlined, PieChartOutlined } from '@ant-design/icons';
+import { Card, Tabs, Button, Divider, Popconfirm, Modal, Form, Select, InputNumber, DatePicker, message, Tooltip } from 'antd';
+import { PlusOutlined, DeleteOutlined, TransactionOutlined, PieChartOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import ReactECharts from 'echarts-for-react';
 import dayjs from 'dayjs';
-import { positionApi, accountApi, type AccountItem, type AddTransactionParams } from '../../api/position';
+import { positionApi, accountApi, type AccountItem } from '../../api/position';
 import type { PositionItem } from '../../api/dashboard';
-import { formatAmount, getProfitColor, formatFundType, getFundTypeColor } from '../../utils/format';
+import { formatAmount, getProfitColor, getFundTypeColor } from '../../utils/format';
 import { useAmountVisible } from '../../hooks/useAmountVisible';
 import PriceChange from '../../components/PriceChange';
 import EmptyGuide from '../../components/EmptyGuide';
@@ -57,12 +57,9 @@ const Portfolio: React.FC = () => {
     try {
       const values = await txForm.validateFields();
       setTxLoading(true);
-      const data: AddTransactionParams = {
+      const data = {
         type: values.type,
         amount: values.amount,
-        shares: values.shares,
-        price: values.price,
-        fee: values.fee || 0,
         tradeDate: values.tradeDate.format('YYYY-MM-DD'),
       };
       await positionApi.addTransaction(txPositionId, data);
@@ -87,21 +84,32 @@ const Portfolio: React.FC = () => {
   const totalMarketValue = filtered.reduce((s, p) => s + p.marketValue, 0);
   const totalProfit = filtered.reduce((s, p) => s + p.profit, 0);
   const totalProfitRate = totalMarketValue > 0 ? (totalProfit / (totalMarketValue - totalProfit)) * 100 : 0;
-
-  // Asset distribution pie chart
-  const typeMap: Record<string, number> = {};
+  
+  // Industry distribution pie chart (aggregated from holdings)
+  const industryMap: Record<string, number> = {};
   filtered.forEach((p) => {
-    const label = formatFundType(p.fundType);
-    typeMap[label] = (typeMap[label] || 0) + p.marketValue;
+    if (p.industryDist && p.industryDist.length > 0) {
+      p.industryDist.forEach((ind) => {
+        // 该持仓中该行业的市值 = 持仓市值 × 行业比例 / 100
+        const indValue = p.marketValue * ind.ratio / 100;
+        industryMap[ind.industry] = (industryMap[ind.industry] || 0) + indValue;
+      });
+    }
   });
+  const industryData = Object.entries(industryMap)
+    .map(([name, value]) => ({ name, value: +value.toFixed(2) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10); // 取前10大行业
+  const hasIndustryData = industryData.length > 0;
+  
   const pieOption = {
-    tooltip: { trigger: 'item' as const, formatter: '{b}: \u00a5{c} ({d}%)' },
+    tooltip: { trigger: 'item' as const, formatter: '{b}: ¥{c} ({d}%)' },
     legend: { bottom: 0, textStyle: { fontSize: 12 } },
     series: [{
       type: 'pie',
       radius: ['45%', '72%'],
       center: ['50%', '45%'],
-      data: Object.entries(typeMap).map(([name, value]) => ({ name, value: +value.toFixed(2) })),
+      data: hasIndustryData ? industryData : [{ name: '暂无数据', value: 1 }],
       label: { show: false },
       emphasis: { label: { show: true, fontSize: 13, fontWeight: 600 } },
       itemStyle: { borderColor: '#fff', borderWidth: 2, borderRadius: 6 },
@@ -210,10 +218,18 @@ const Portfolio: React.FC = () => {
           )}
         </Card>
 
-        {/* Asset Distribution */}
+        {/* Industry Distribution */}
         <Card
           className="fund-card-static"
-          title={<span><PieChartOutlined style={{ marginRight: 8, color: 'var(--color-primary)' }} />{'\u8d44\u4ea7\u5206\u5e03'}</span>}
+          title={
+            <span>
+              <PieChartOutlined style={{ marginRight: 8, color: 'var(--color-primary)' }} />
+              行业分布
+              <Tooltip title="基于持仓基金的最新季报行业配置数据，按市值加权聚合">
+                <InfoCircleOutlined style={{ marginLeft: 6, color: '#bfbfbf', fontSize: 12 }} />
+              </Tooltip>
+            </span>
+          }
           style={{ width: 360, flexShrink: 0 }}
         >
           <ReactECharts option={pieOption} theme="fundTheme" style={{ height: 280 }} />
@@ -222,7 +238,7 @@ const Portfolio: React.FC = () => {
 
       {/* Transaction Modal */}
       <Modal
-        title={'\u6dfb\u52a0\u4ea4\u6613\u8bb0\u5f55'}
+        title={'添加交易记录'}
         open={txModalOpen}
         onOk={handleTxSubmit}
         onCancel={() => setTxModalOpen(false)}
@@ -230,27 +246,21 @@ const Portfolio: React.FC = () => {
         destroyOnClose
         styles={{ body: { paddingTop: 16 } }}
       >
+        <div className="fund-info-bar" style={{ marginBottom: 16 }}>
+          只需填写交易金额，系统将自动计算份额和净值
+        </div>
         <Form form={txForm} layout="vertical" initialValues={{ type: 'BUY', tradeDate: dayjs() }}>
-          <Form.Item name="type" label={'\u4ea4\u6613\u7c7b\u578b'} rules={[{ required: true }]}>
+          <Form.Item name="type" label={'交易类型'} rules={[{ required: true }]}>
             <Select options={[
-              { value: 'BUY', label: '\u4e70\u5165(\u52a0\u4ed3)' },
-              { value: 'SELL', label: '\u5356\u51fa(\u51cf\u4ed3)' },
-              { value: 'DIVIDEND', label: '\u5206\u7ea2' },
+              { value: 'BUY', label: '买入(加仓)' },
+              { value: 'SELL', label: '卖出(减仓)' },
+              { value: 'DIVIDEND', label: '分红' },
             ]} />
           </Form.Item>
-          <Form.Item name="amount" label={'\u4ea4\u6613\u91d1\u989d(\u5143)'} rules={[{ required: true, message: '\u8bf7\u8f93\u5165\u4ea4\u6613\u91d1\u989d' }]}>
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder={'\u8bf7\u8f93\u5165\u91d1\u989d'} />
+          <Form.Item name="amount" label={'交易金额(元)'} rules={[{ required: true, message: '请输入交易金额' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder={'请输入买入或卖出金额'} />
           </Form.Item>
-          <Form.Item name="shares" label={'\u4ea4\u6613\u4efd\u989d'} rules={[{ required: true, message: '\u8bf7\u8f93\u5165\u4ea4\u6613\u4efd\u989d' }]}>
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder={'\u8bf7\u8f93\u5165\u4efd\u989d'} />
-          </Form.Item>
-          <Form.Item name="price" label={'\u6210\u4ea4\u51c0\u503c'} rules={[{ required: true, message: '\u8bf7\u8f93\u5165\u6210\u4ea4\u51c0\u503c' }]}>
-            <InputNumber style={{ width: '100%' }} min={0} precision={4} placeholder={'\u8bf7\u8f93\u5165\u51c0\u503c'} />
-          </Form.Item>
-          <Form.Item name="fee" label={'\u624b\u7eed\u8d39(\u5143)'}>
-            <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder={'\u9009\u586b'} />
-          </Form.Item>
-          <Form.Item name="tradeDate" label={'\u4ea4\u6613\u65e5\u671f'} rules={[{ required: true, message: '\u8bf7\u9009\u62e9\u65e5\u671f' }]}>
+          <Form.Item name="tradeDate" label={'交易日期'} rules={[{ required: true, message: '请选择日期' }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
         </Form>

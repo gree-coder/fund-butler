@@ -175,6 +175,26 @@ public class FundDataAggregator {
     }
 
     /**
+     * 根据日期获取指定日期的净值
+     */
+    public BigDecimal getNavByDate(String fundCode, LocalDate date) {
+        try {
+            List<FundNav> navs = fundNavMapper.selectList(
+                    new QueryWrapper<FundNav>()
+                            .eq("fund_code", fundCode)
+                            .eq("nav_date", date)
+                            .last("LIMIT 1")
+            );
+            if (!navs.isEmpty()) {
+                return navs.get(0).getNav();
+            }
+        } catch (Exception e) {
+            log.warn("从数据库获取指定日期净值失败: {} - {}", fundCode, date, e);
+        }
+        return null;
+    }
+
+    /**
      * 手动刷新基金数据 (清除缓存后重新获取)
      */
     public RefreshResultDTO refreshFundData(String fundCode) {

@@ -61,6 +61,7 @@ export interface CompensationLog {
   afterReturn?: number;
   source: string;
   type: 'PREDICT' | 'ACTUAL';
+  compensatedAt?: string;
   reason: string;
 }
 

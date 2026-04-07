@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Segmented, Tag } from 'antd';
-import { EyeOutlined, EyeInvisibleOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Segmented, Tooltip } from 'antd';
+import { EyeOutlined, EyeInvisibleOutlined, PlusOutlined, RightOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { dashboardApi, type DashboardData, type ProfitTrend } from '../../api/dashboard';
 import { useAmountVisible } from '../../hooks/useAmountVisible';
@@ -83,10 +83,22 @@ const Dashboard: React.FC = () => {
           </Col>
           <Col span={8}>
             <Statistic
-              title={<span className="fund-stat-label">今日收益</span>}
-              value={mask(formatAmount(data.todayProfit))}
-              prefix={visible ? '¥' : ''}
-              valueStyle={{ color: getProfitColor(data.todayProfit), fontVariantNumeric: 'tabular-nums' }}
+              title={
+                <span className="fund-stat-label">
+                  {data.todayProfitIsEstimate ? (
+                    <>
+                      今日预估收益{' '}
+                      <Tooltip title="今日实际净值尚未公布，当前为预估值">
+                        <QuestionCircleOutlined style={{ color: '#8c8c8c', fontSize: 12 }} />
+                      </Tooltip>
+                    </>
+                  ) : '今日收益'}
+                </span>
+              }
+              value={formatAmount(data.todayProfitIsEstimate ? data.todayEstimateProfit : data.todayProfit)}
+              prefix="¥"
+              valueStyle={{ color: getProfitColor(data.todayProfitIsEstimate ? data.todayEstimateProfit : data.todayProfit), fontVariantNumeric: 'tabular-nums' }}
+              suffix={data.todayProfitIsEstimate ? <span style={{ fontSize: 14 }}>{formatPercent(data.todayEstimateReturn)}</span> : null}
             />
           </Col>
         </Row>
@@ -120,25 +132,27 @@ const Dashboard: React.FC = () => {
                     <div className="fund-secondary" style={{ marginTop: 2 }}>{p.fundCode} · {p.accountName}</div>
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', minWidth: 160 }}>
+                  {/* 持有金额 - 隐私加密 */}
                   <div style={{ fontWeight: 600, fontSize: 15, fontVariantNumeric: 'tabular-nums' }}>
                     {visible ? `¥${formatAmount(p.marketValue)}` : '****'}
                   </div>
-                  <div style={{ fontSize: 12, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                    <span>
-                      <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>估</Tag>
-                      <PriceChange value={p.estimateReturn} size="sm" />
+                  {/* 收益 - 隐私加密（包括涨幅） */}
+                  <div style={{ fontSize: 12, marginTop: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#8c8c8c' }}>收益</span>
+                    <span style={{ color: getProfitColor(p.profit), fontWeight: 500 }}>
+                      {visible ? `¥${formatAmount(p.profit)}` : '****'}
                     </span>
-                    <span style={{ color: getProfitColor(p.profitRate) }}>
-                      {visible ? formatPercent(p.profitRate) : '****'}
-                    </span>
+                    {visible && <PriceChange value={p.profitRate} size="sm" />}
                   </div>
-                  {p.actualReturn != null && (
-                    <div style={{ fontSize: 12, marginTop: 1 }}>
-                      <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 2 }}>实{p.actualReturnDelayed ? ' T+1' : ''}</Tag>
-                      <PriceChange value={p.actualReturn} size="sm" />
-                    </div>
-                  )}
+                  {/* 今日估值 - 不隐藏 */}
+                  <div style={{ fontSize: 12, marginTop: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: '#8c8c8c' }}>今日估值</span>
+                    <span style={{ color: getProfitColor(p.estimateProfit), fontWeight: 500 }}>
+                      ¥{formatAmount(p.estimateProfit)}
+                    </span>
+                    <PriceChange value={p.estimateReturn} size="sm" />
+                  </div>
                 </div>
               </div>
             ))}

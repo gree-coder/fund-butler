@@ -77,7 +77,7 @@ const SearchBar: React.FC = () => {
   return (
     <AutoComplete
       className="fund-searchbar"
-      style={{ width: 360 }}
+      style={{ width: 240 }}
       options={options}
       onSearch={handleSearch}
       onSelect={handleSelect}

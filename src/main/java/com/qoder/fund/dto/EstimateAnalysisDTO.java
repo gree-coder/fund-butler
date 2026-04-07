@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -131,6 +132,8 @@ public class EstimateAnalysisDTO {
         private String source;
         /** 补偿类型: PREDICT(预测数据)/ACTUAL(实际净值) */
         private CompensationType type;
+        /** 补偿时间点 */
+        private LocalDateTime compensatedAt;
         /** 补偿说明 */
         private String reason;
     }

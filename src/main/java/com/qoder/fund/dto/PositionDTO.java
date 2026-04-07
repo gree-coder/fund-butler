@@ -4,6 +4,8 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 @Data
 public class PositionDTO {
@@ -16,6 +18,8 @@ public class PositionDTO {
     private BigDecimal latestNav;
     private BigDecimal estimateNav;
     private BigDecimal estimateReturn;
+    /** 今日预估收益金额 = 持仓市值 × 今日预估涨幅 / 100 */
+    private BigDecimal estimateProfit;
     private BigDecimal actualNav;
     private BigDecimal actualReturn;
     /** 实际涨幅是否为延迟数据(QDII T+1) */
@@ -27,4 +31,6 @@ public class PositionDTO {
     private BigDecimal profitRate;
     private Long accountId;
     private String accountName;
+    /** 行业分布列表 [{industry, ratio}] */
+    private List<Map<String, Object>> industryDist;
 }

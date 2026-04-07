@@ -36,6 +36,9 @@ export const watchlistApi = {
   remove: (id: number): Promise<void> =>
     client.delete(`/watchlist/${id}`),
 
+  removeByCode: (fundCode: string): Promise<void> =>
+    client.delete(`/watchlist/code/${fundCode}`),
+
   checkExists: (codes: string[]): Promise<string[]> =>
     client.get('/watchlist/check', { params: { codes: codes.join(',') } }),
 };
