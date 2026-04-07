@@ -52,10 +52,42 @@ export interface ProfitTrend {
   profits: number[];
 }
 
+export interface DrawdownData {
+  maxDrawdown: number;
+  maxDrawdownAmount: number;
+  startDate: string | null;
+  endDate: string | null;
+  duration: number;
+  drawdownCurve: number[];
+}
+
+export interface PerformanceMetrics {
+  totalReturn: number;
+  annualizedReturn: number;
+  sharpeRatio: number;
+  volatility: number;
+  profitDays: number;
+  lossDays: number;
+  winRate: number;
+}
+
+export interface ProfitAnalysisData {
+  dates: string[];
+  dailyProfits: number[];
+  cumulativeProfits: number[];
+  cumulativeReturns: number[];
+  marketValues: number[];
+  drawdown: DrawdownData;
+  metrics: PerformanceMetrics;
+}
+
 export const dashboardApi = {
   getData: (): Promise<DashboardData> =>
     client.get('/dashboard'),
 
   getProfitTrend: (days: number): Promise<ProfitTrend> =>
     client.get('/dashboard/profit-trend', { params: { days } }),
+
+  getProfitAnalysis: (days: number): Promise<ProfitAnalysisData> =>
+    client.get('/dashboard/profit-analysis', { params: { days } }),
 };

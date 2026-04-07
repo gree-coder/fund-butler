@@ -8,7 +8,11 @@
 - [ProfitTrendDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitTrendDTO.java)
 - [PositionDTO.java](file://src/main/java/com/qoder/fund/dto/PositionDTO.java)
 - [PositionService.java](file://src/main/java/com/qoder/fund/service/PositionService.java)
+- [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
+- [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
+- [FundDetailDTO.java](file://src/main/java/com/qoder/fund/dto/FundDetailDTO.java)
 - [index.tsx](file://fund-web/src/pages/Dashboard/index.tsx)
+- [index.tsx](file://fund-web/src/pages/Portfolio/index.tsx)
 - [dashboard.ts](file://fund-web/src/api/dashboard.ts)
 - [format.ts](file://fund-web/src/utils/format.ts)
 - [useAmountVisible.ts](file://fund-web/src/hooks/useAmountVisible.ts)
@@ -23,11 +27,10 @@
 
 ## 更新摘要
 **所做更改**
-- 更新了仪表板页面的重新设计分析，重点增强数据可视化和用户交互体验
-- 新增了收益趋势图表的详细实现分析
-- 增强了持仓列表的交互设计说明
-- 更新了资产总览卡片的视觉设计描述
-- 完善了用户隐私保护功能的说明
+- 新增行业分布数据展示功能，实现按市值加权的行业聚合分析
+- 改进图表可视化，新增收益趋势图表和行业分布饼图
+- 增强数据聚合逻辑，支持多维度数据分析和权重计算
+- 完善前端行业分布展示，提供交互式图表和数据钻取功能
 
 ## 目录
 1. [简介](#简介)
@@ -42,11 +45,11 @@
 
 ## 简介
 
-本文档详细分析了基金投资管理系统中的仪表板增强功能。该系统是一个基于Spring Boot和React的Web应用，专注于为个人投资者提供一站式基金数据聚合管理工具。仪表板作为用户登录后的主页面，提供了投资组合的全面概览，包括资产总览、持仓列表、收益趋势分析等功能。
+本文档详细分析了基金投资管理系统中的仪表板增强功能。该系统是一个基于Spring Boot和React的Web应用，专注于为个人投资者提供一站式基金数据聚合管理工具。仪表板作为用户登录后的主页面，提供了投资组合的全面概览，包括资产总览、持仓列表、收益趋势分析和行业分布展示等功能。
 
-**更新** 本次更新重点关注仪表板页面的重新设计，显著增强了数据可视化效果和用户交互体验，包括改进的图表展示、更直观的布局设计和增强的隐私保护功能。
+**更新** 本次更新重点关注仪表板功能的全面增强，新增了行业分布数据展示、改进的图表可视化和增强的数据聚合逻辑。系统现在能够提供更深入的投资组合分析，帮助用户理解资产在不同行业间的分布情况和风险暴露。
 
-系统采用前后端分离架构，后端使用Java Spring Boot提供RESTful API，前端使用React TypeScript构建用户界面。通过集成多个数据源，系统能够实时获取基金净值、估值等关键数据，为用户提供准确的投资决策辅助信息。
+系统采用前后端分离架构，后端使用Java Spring Boot提供RESTful API，前端使用React TypeScript构建用户界面。通过集成多个数据源，系统能够实时获取基金净值、估值和行业分布等关键数据，为用户提供准确的投资决策辅助信息。
 
 ## 项目结构
 
@@ -70,39 +73,46 @@ F --> L[图表组件]
 end
 M[数据源] --> C
 N[第三方API] --> C
+O[行业分布数据] --> P[FundDataAggregator]
+P --> Q[EastMoneyDataSource]
 ```
 
 **图表来源**
-- [DashboardController.java:1-27](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L27)
-- [DashboardService.java:1-84](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L84)
-- [index.tsx:1-184](file://fund-web/src/pages/Dashboard/index.tsx#L1-L184)
+- [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
+- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
+- [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
+- [EastMoneyDataSource.java:660-700](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L660-L700)
 
 **章节来源**
-- [DashboardController.java:1-27](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L27)
-- [DashboardService.java:1-84](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L84)
-- [index.tsx:1-184](file://fund-web/src/pages/Dashboard/index.tsx#L1-L184)
+- [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
+- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
 
 ## 核心组件
 
 ### 后端核心组件
 
 #### 控制器层
-DashboardController负责处理仪表板相关的HTTP请求，提供两个主要接口：
-- 获取仪表板概览数据
+DashboardController负责处理仪表板相关的HTTP请求，提供三个主要接口：
+- 获取仪表板概览数据（包含行业分布）
 - 获取收益趋势数据
+- 获取收益分析数据（包含回撤分析）
 
 #### 服务层
 DashboardService是核心业务逻辑处理单元，负责：
 - 计算总资产、总收益、总收益率
-- 计算今日收益
+- 计算今日收益和预估收益
 - 生成收益趋势数据
-- 处理持仓数据聚合
+- **新增**：聚合行业分布数据，按市值加权计算行业占比
+- 处理持仓数据聚合和行业分布分析
 
 #### DTO层
 系统使用多个DTO对象来封装数据传输：
-- DashboardDTO：仪表板概览数据
+- DashboardDTO：仪表板概览数据，**新增**：industryDistribution字段
 - ProfitTrendDTO：收益趋势数据
-- PositionDTO：持仓详情数据
+- PositionDTO：持仓详情数据，**新增**：industryDist字段
+- FundDetailDTO：基金详情数据，**新增**：industryDist字段
 
 ### 前端核心组件
 
@@ -110,21 +120,29 @@ DashboardService是核心业务逻辑处理单元，负责：
 React组件负责展示仪表板的所有功能，包括：
 - 资产总览卡片（支持金额隐藏）
 - 持仓基金列表（带类型标识和收益信息）
+- **新增**：行业分布饼图展示
 - 收益趋势图表（支持时间范围切换）
 - 金额隐私保护功能
 
+#### Portfolio页面
+**新增**：独立的组合管理页面，提供：
+- 详细的持仓列表和统计信息
+- **新增**：行业分布饼图，基于持仓数据聚合
+- 交易记录管理和账户管理功能
+
 #### API接口
 dashboardApi模块提供类型安全的API调用：
-- getData：获取仪表板数据
+- getData：获取仪表板数据（包含行业分布）
 - getProfitTrend：获取收益趋势
+- getProfitAnalysis：获取收益分析数据
 
-**更新** 新增了收益趋势图表的实现细节，包括ECharts集成和交互功能。
+**更新** 新增了行业分布数据的API支持和前端展示功能。
 
 **章节来源**
-- [DashboardController.java:15-26](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L15-L26)
-- [DashboardService.java:22-82](file://src/main/java/com/qoder/fund/service/DashboardService.java#L22-L82)
-- [DashboardDTO.java:1-16](file://src/main/java/com/qoder/fund/dto/DashboardDTO.java#L1-L16)
-- [index.tsx:13-184](file://fund-web/src/pages/Dashboard/index.tsx#L13-L184)
+- [DashboardController.java:18-34](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L18-L34)
+- [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
+- [DashboardDTO.java:22-23](file://src/main/java/com/qoder/fund/dto/DashboardDTO.java#L22-L23)
+- [index.tsx:13-198](file://fund-web/src/pages/Dashboard/index.tsx#L13-L198)
 
 ## 架构概览
 
@@ -138,11 +156,14 @@ Hooks[React Hooks]
 Utils[工具函数]
 Components[UI组件库]
 Chart[图表组件]
+Portfolio[Portfolio页面]
+Dashboard[Dashboard页面]
 end
 subgraph "业务逻辑层"
 Controller[DashboardController]
 Service[DashboardService]
 PositionService[PositionService]
+FundDataAggregator[FundDataAggregator]
 end
 subgraph "数据访问层"
 Mapper[MyBatis Mapper]
@@ -153,8 +174,10 @@ DB[(MySQL数据库)]
 Cache[(Redis缓存)]
 end
 subgraph "外部数据源"
-FundAPI[基金数据API]
-DataSource[多家数据源]
+EastMoney[东方财富API]
+Sina[Sina数据源]
+Tencent[Tencent数据源]
+StockEstimate[股票估值数据]
 end
 UI --> Controller
 Hooks --> Controller
@@ -165,17 +188,22 @@ PositionService --> Mapper
 Mapper --> Entity
 Entity --> DB
 Service --> Cache
-PositionService --> FundAPI
-FundAPI --> DataSource
+PositionService --> FundDataAggregator
+FundDataAggregator --> EastMoney
+FundDataAggregator --> Sina
+FundDataAggregator --> Tencent
+FundDataAggregator --> StockEstimate
 Chart --> UI
 Components --> UI
+Portfolio --> Chart
+Dashboard --> Chart
 ```
 
 **图表来源**
-- [DashboardController.java:10-26](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L10-L26)
-- [DashboardService.java:16-82](file://src/main/java/com/qoder/fund/service/DashboardService.java#L16-L82)
-- [PositionService.java:25-168](file://src/main/java/com/qoder/fund/service/PositionService.java#L25-L168)
-- [application.yml:18-25](file://src/main/resources/application.yml#L18-L25)
+- [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
+- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
+- [EastMoneyDataSource.java:660-700](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L660-L700)
 
 **章节来源**
 - [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
@@ -194,6 +222,7 @@ participant Controller as DashboardController
 participant Service as DashboardService
 participant PositionSvc as PositionService
 participant DB as 数据库
+participant Aggregator as FundDataAggregator
 Client->>Controller : GET /api/dashboard
 Controller->>Service : getDashboard()
 Service->>PositionSvc : list(null)
@@ -201,41 +230,46 @@ PositionSvc->>DB : 查询所有持仓
 DB-->>PositionSvc : 持仓数据
 PositionSvc-->>Service : PositionDTO列表
 Service->>Service : 计算总资产、总收益
-Service->>Service : 计算今日收益
-Service->>Service : 计算收益率
+Service->>Service : 计算今日收益和预估收益
+Service->>Service : 聚合行业分布数据
+Note over Service : 按市值加权计算行业占比
 Service-->>Controller : DashboardDTO
 Controller-->>Client : 返回数据
 ```
 
 **图表来源**
-- [DashboardController.java:17-20](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L17-L20)
-- [DashboardService.java:22-63](file://src/main/java/com/qoder/fund/service/DashboardService.java#L22-L63)
+- [DashboardController.java:18-21](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L18-L21)
+- [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
 - [PositionService.java:33-44](file://src/main/java/com/qoder/fund/service/PositionService.java#L33-L44)
 
-#### 收益趋势数据生成
+#### 行业分布数据聚合流程
 
 ```mermaid
 flowchart TD
-Start([开始计算]) --> InitVars["初始化变量<br/>dates[], profits[]"]
-InitVars --> GetDays["获取天数参数"]
-GetDays --> CalcDates["计算日期范围<br/>从今天向前推days-1天"]
-CalcDates --> LoopDates["遍历每个日期"]
-LoopDates --> CheckData{"是否有历史数据?"}
-CheckData --> |是| UseHistorical["使用历史净值数据"]
-CheckData --> |否| UseZero["使用占位零值"]
-UseHistorical --> AddToArrays["添加到数组"]
-UseZero --> AddToArrays
-AddToArrays --> NextDate{"还有日期吗?"}
-NextDate --> |是| LoopDates
-NextDate --> |否| ReturnData["返回ProfitTrendDTO"]
+Start([开始聚合]) --> InitVars["初始化行业市值映射"]
+InitVars --> IteratePositions["遍历所有持仓"]
+IteratePositions --> CheckIndustry{"持仓有行业数据?"}
+CheckIndustry --> |是| IterateIndustries["遍历行业分布"]
+CheckIndustry --> |否| NextPosition["下一个持仓"]
+IterateIndustries --> CalcValue["计算行业市值 = 持仓市值 × 行业比例 / 100"]
+CalcValue --> MergeIndustry["合并到行业映射"]
+MergeIndustry --> NextIndustry{"还有行业?"}
+NextIndustry --> |是| IterateIndustries
+NextIndustry --> |否| NextPosition
+NextPosition --> CheckMore{"还有持仓?"}
+CheckMore --> |是| IteratePositions
+CheckMore --> |否| BuildList["构建行业分布列表"]
+BuildList --> CalcRatio["计算行业占比 = 行业市值 / 总资产 × 100"]
+CalcRatio --> SortList["按市值降序排序"]
+SortList --> ReturnData["返回DashboardDTO"]
 ReturnData --> End([结束])
 ```
 
 **图表来源**
-- [DashboardService.java:65-82](file://src/main/java/com/qoder/fund/service/DashboardService.java#L65-L82)
+- [DashboardService.java:49-126](file://src/main/java/com/qoder/fund/service/DashboardService.java#L49-L126)
 
 **章节来源**
-- [DashboardService.java:22-82](file://src/main/java/com/qoder/fund/service/DashboardService.java#L22-L82)
+- [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
 
 ### 前端组件架构
 
@@ -267,34 +301,31 @@ Dashboard --> Skeleton[骨架屏]
 ```
 
 **图表来源**
-- [index.tsx:55-180](file://fund-web/src/pages/Dashboard/index.tsx#L55-L180)
+- [index.tsx:55-194](file://fund-web/src/pages/Dashboard/index.tsx#L55-L194)
 
-#### 数据展示逻辑
+#### Portfolio页面行业分布图表
 
 ```mermaid
 flowchart TD
-LoadData[加载数据] --> CheckLoading{加载中?}
-CheckLoading --> |是| ShowSkeleton[显示仪表板骨架屏]
-CheckLoading --> |否| CheckData{有数据?}
-CheckData --> |否| ShowEmpty[显示空状态引导]
-CheckData --> |是| RenderDashboard[渲染仪表板]
-RenderDashboard --> AssetCards[资产卡片]
-RenderDashboard --> PositionList[持仓列表]
-RenderDashboard --> ProfitChart[收益图表]
-AssetCards --> AmountVisibility[金额可见性控制]
-PositionList --> ClickNavigation[点击跳转详情]
-ProfitChart --> ChartInteraction[图表交互]
-ProfitChart --> TimeRangeSelector[时间范围选择]
+Portfolio[Portfolio页面] --> IndustryChart[行业分布饼图]
+IndustryChart --> AggregateData[聚合行业数据]
+AggregateData --> CalcValue["计算行业市值 = 持仓市值 × 行业比例 / 100"]
+CalcValue --> SumIndustry["汇总相同行业"]
+SumIndustry --> SortIndustry["按市值排序取前10"]
+SortIndustry --> CreateOption["创建ECharts配置"]
+CreateOption --> RenderChart[渲染饼图]
+Portfolio --> SummaryStats[总市值统计]
+Portfolio --> PositionList[持仓列表]
 ```
 
-**更新** 新增了收益趋势图表的时间范围选择功能和骨架屏加载体验。
+**更新** 新增了Portfolio页面的行业分布图表实现。
 
 **图表来源**
-- [index.tsx:21-39](file://fund-web/src/pages/Dashboard/index.tsx#L21-L39)
-- [index.tsx:159-177](file://fund-web/src/pages/Dashboard/index.tsx#L159-L177)
+- [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
 
 **章节来源**
-- [index.tsx:13-184](file://fund-web/src/pages/Dashboard/index.tsx#L13-L184)
+- [index.tsx:13-198](file://fund-web/src/pages/Dashboard/index.tsx#L13-L198)
+- [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
 - [useAmountVisible.ts:1-26](file://fund-web/src/hooks/useAmountVisible.ts#L1-L26)
 
 ### 数据模型设计
@@ -370,6 +401,12 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 - QDII基金显示T+1延迟标识
 - 点击任意位置即可跳转到基金详情
 
+#### **新增** 行业分布展示
+- **Dashboard页面**：显示整体投资组合的行业分布
+- **Portfolio页面**：提供详细的行业分布饼图
+- 按市值加权计算行业占比，支持前10大行业展示
+- 行业数据来源于基金持仓的最新季报数据
+
 #### 收益趋势图表
 - 使用ECharts实现柱状图展示
 - 收益为正显示红色，为负显示绿色
@@ -377,9 +414,10 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 - 骨架屏加载提升用户体验
 
 **章节来源**
-- [index.tsx:58-93](file://fund-web/src/pages/Dashboard/index.tsx#L58-L93)
+- [index.tsx:58-103](file://fund-web/src/pages/Dashboard/index.tsx#L58-L103)
 - [index.tsx:110-151](file://fund-web/src/pages/Dashboard/index.tsx#L110-L151)
 - [index.tsx:171-176](file://fund-web/src/pages/Dashboard/index.tsx#L171-L176)
+- [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
 
 ## 依赖关系分析
 
@@ -395,6 +433,7 @@ end
 subgraph "服务层"
 DS[DashboardService]
 PS[PositionService]
+FDA[FundDataAggregator]
 end
 subgraph "数据访问层"
 PM[PositionMapper]
@@ -403,10 +442,10 @@ AM[AccountMapper]
 FM[FundMapper]
 end
 subgraph "数据源"
-FDA[FundDataAggregator]
 ED[EastMoneyDataSource]
 SD[SinaDataSource]
 TD[TencentDataSource]
+SED[StockEstimateDataSource]
 end
 DC --> DS
 DS --> PS
@@ -418,12 +457,13 @@ PS --> FDA
 FDA --> ED
 FDA --> SD
 FDA --> TD
+FDA --> SED
 ```
 
 **图表来源**
 - [DashboardController.java:15](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L15)
-- [DashboardService.java:20](file://src/main/java/com/qoder/fund/service/DashboardService.java#L20)
-- [PositionService.java:27-31](file://src/main/java/com/qoder/fund/service/PositionService.java#L27-L31)
+- [DashboardService.java:33-35](file://src/main/java/com/qoder/fund/service/DashboardService.java#L33-L35)
+- [FundDataAggregator.java:45-55](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L45-L55)
 
 ### 前端依赖关系
 
@@ -431,6 +471,7 @@ FDA --> TD
 graph TB
 subgraph "页面组件"
 DP[Dashboard页面]
+PP[Portfolio页面]
 end
 subgraph "API层"
 DA[dashboardApi]
@@ -451,20 +492,25 @@ DP --> UF
 DP --> UV
 DP --> PC
 DP --> PS
+PP --> EC
+PP --> UF
+PP --> PC
+PP --> PS
 DA --> CL
 DP --> AD
+PP --> AD
 DP --> EC
 ```
 
 **图表来源**
 - [index.tsx:5](file://fund-web/src/pages/Dashboard/index.tsx#L5)
-- [dashboard.ts:37-43](file://fund-web/src/api/dashboard.ts#L37-L43)
+- [dashboard.ts:84-93](file://fund-web/src/api/dashboard.ts#L84-L93)
 - [client.ts:4-7](file://fund-web/src/api/client.ts#L4-L7)
 
 **章节来源**
-- [DashboardController.java:1-27](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L27)
-- [DashboardService.java:1-84](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L84)
-- [PositionService.java:1-200](file://src/main/java/com/qoder/fund/service/PositionService.java#L1-L200)
+- [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
+- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 
 ## 性能考虑
 
@@ -476,6 +522,7 @@ DP --> EC
 2. **数据库优化**：为常用查询字段建立索引，包括fund_code、account_id等
 3. **数据聚合**：在服务层进行数据聚合，减少数据库查询次数
 4. **BigDecimal精度**：使用适当的舍入模式确保计算精度
+5. ****新增**：行业分布数据聚合优化，使用HashMap进行高效合并操作
 
 ### 前端性能优化
 
@@ -483,7 +530,7 @@ DP --> EC
 2. **状态管理**：使用React Hooks管理组件状态，避免不必要的重渲染
 3. **数据缓存**：本地存储金额可见性设置，提升用户体验
 4. **骨架屏**：使用PageSkeleton提供更好的加载体验
-5. **虚拟滚动**：对于大量持仓数据，可考虑实现虚拟滚动优化
+5. ****新增**：图表数据预处理，避免重复计算和渲染
 
 ### 数据源性能
 
@@ -491,8 +538,9 @@ DP --> EC
 - 多数据源备份，防止单点故障
 - 实时估值数据与收盘后净值数据结合使用
 - 本地缓存机制减少对外部API的依赖
+- **新增**：行业分布数据的批量处理和缓存策略
 
-**更新** 新增了骨架屏和虚拟滚动的性能优化建议。
+**更新** 新增了行业分布数据聚合和图表渲染的性能优化建议。
 
 **章节来源**
 - [application.yml:18-25](file://src/main/resources/application.yml#L18-L25)
@@ -516,6 +564,20 @@ DP --> EC
 2. 查看浏览器开发者工具中的网络请求
 3. 验证后端服务运行状态
 4. 检查数据库连接配置
+
+#### **新增** 行业分布数据异常
+
+**症状**：行业分布图表显示异常或数据不准确
+**可能原因**：
+1. 基金行业数据缺失或格式错误
+2. 行业分布聚合计算逻辑错误
+3. 数据转换和类型处理问题
+
+**解决步骤**：
+1. 检查FundDetailDTO中的industryDist数据格式
+2. 验证DashboardService中的行业分布聚合逻辑
+3. 确认数据类型转换和BigDecimal运算精度
+4. 检查EastMoneyDataSource中的行业数据解析
 
 #### 收益趋势数据异常
 
@@ -543,18 +605,20 @@ DP --> EC
 2. 验证useAmountVisible钩子逻辑
 3. 确认formatAmount函数正常工作
 
-#### 图表渲染问题
+#### **新增** 图表渲染问题
 
-**症状**：收益趋势图表不显示或显示异常
+**症状**：收益趋势图表或行业分布图表不显示或显示异常
 **可能原因**：
 1. ECharts库加载失败
 2. 图表配置错误
 3. 数据格式不匹配
+4. **新增**：行业分布数据格式不兼容
 
 **解决步骤**：
 1. 检查网络连接和CDN资源
-2. 验证trendOption配置
+2. 验证trendOption和pieOption配置
 3. 确认数据格式符合ECharts要求
+4. **新增**：验证industryDistribution数据结构
 
 ### 调试技巧
 
@@ -563,8 +627,9 @@ DP --> EC
 3. **网络调试**：监控API响应时间和错误码
 4. **数据库调试**：检查关键查询的执行计划
 5. **图表调试**：使用浏览器开发者工具检查ECharts实例
+6. ****新增**：行业数据调试**：检查API返回的行业分布数据格式和完整性
 
-**更新** 新增了图表渲染问题的调试方法。
+**更新** 新增了行业分布数据和图表渲染问题的调试方法。
 
 **章节来源**
 - [EmptyGuide.tsx:1-35](file://fund-web/src/components/EmptyGuide.tsx#L1-L35)
@@ -573,7 +638,7 @@ DP --> EC
 
 ## 结论
 
-仪表板增强功能成功实现了基金投资管理的核心需求。系统通过前后端分离的设计，提供了完整的投资组合概览功能，包括资产总览、持仓管理、收益分析等关键特性。
+仪表板增强功能成功实现了基金投资管理的核心需求。系统通过前后端分离的设计，提供了完整的投资组合概览功能，包括资产总览、持仓管理、收益分析和行业分布展示等关键特性。
 
 **更新** 本次重新设计显著提升了用户体验，主要体现在：
 
@@ -581,9 +646,10 @@ DP --> EC
 
 1. **完整的数据聚合**：整合多个数据源，提供准确的实时数据
 2. **直观的可视化**：通过图表和卡片布局，让用户快速理解投资状况
-3. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
-4. **可扩展的架构**：模块化的组件设计便于后续功能扩展
-5. **增强的隐私保护**：金额隐藏功能保护用户财务隐私
+3. ****新增**：深入的行业分析**：提供按市值加权的行业分布，帮助用户理解风险暴露
+4. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
+5. **可扩展的架构**：模块化的组件设计便于后续功能扩展
+6. ****新增**：增强的隐私保护**：金额隐藏功能保护用户财务隐私
 
 ### 技术亮点
 
@@ -591,6 +657,7 @@ DP --> EC
 - **状态管理**：合理的状态分离和管理机制
 - **错误处理**：完善的错误处理和用户反馈机制
 - **性能优化**：缓存策略和数据优化确保系统响应速度
+- ****新增**：行业数据聚合**：高效的HashMap合并和BigDecimal计算
 - **现代化UI**：采用Ant Design组件库和ECharts图表库
 
 ### 未来改进方向
@@ -599,6 +666,7 @@ DP --> EC
 2. **移动端优化**：针对移动设备进行专门的界面优化
 3. **实时更新**：实现更频繁的数据刷新机制
 4. **个性化定制**：允许用户自定义仪表板布局和显示内容
-5. **虚拟滚动**：对大量持仓数据实现虚拟滚动优化
+5. ****新增**：行业深度分析**：提供行业间的相关性分析和风险评估
+6. ****新增**：数据导出功能**：支持行业分布和收益分析数据的导出
 
-该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化和用户交互方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。
+该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化、用户交互和行业分析方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。

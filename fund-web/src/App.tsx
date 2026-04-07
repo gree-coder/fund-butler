@@ -10,6 +10,7 @@ import Portfolio from './pages/Portfolio';
 import AddPosition from './pages/Portfolio/AddPosition';
 import TransactionList from './pages/Portfolio/TransactionList';
 import Watchlist from './pages/Watchlist';
+import ProfitAnalysis from './pages/Analysis';
 
 const theme = {
   token: {
@@ -54,6 +55,7 @@ const App: React.FC = () => {
             <Route path="/portfolio/add" element={<AddPosition />} />
             <Route path="/portfolio/records" element={<TransactionList />} />
             <Route path="/watchlist" element={<Watchlist />} />
+            <Route path="/analysis" element={<ProfitAnalysis />} />
           </Route>
         </Routes>
       </BrowserRouter>

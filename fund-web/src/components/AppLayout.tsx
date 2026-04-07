@@ -5,6 +5,7 @@ import {
   SearchOutlined,
   FundOutlined,
   StarOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import SearchBar from './SearchBar';
@@ -16,6 +17,7 @@ const menuItems = [
   { key: '/search', icon: <SearchOutlined />, label: '基金查询' },
   { key: '/portfolio', icon: <FundOutlined />, label: '我的持仓' },
   { key: '/watchlist', icon: <StarOutlined />, label: '自选基金' },
+  { key: '/analysis', icon: <LineChartOutlined />, label: '收益分析' },
 ];
 
 const AppLayout: React.FC = () => {
