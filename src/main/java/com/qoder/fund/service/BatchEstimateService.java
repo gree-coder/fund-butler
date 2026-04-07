@@ -136,8 +136,8 @@ public class BatchEstimateService {
 
         Map<String, EstimateSourceDTO> result = new ConcurrentHashMap<>();
 
-        // 分批处理，每批2个（多源估值较慢，减少批次大小，避免触发限流）
-        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 2);
+        // 分批处理，每批3个（多源估值较慢，减少批次大小，避免触发限流）
+        List<List<String>> batches = partitionList(new ArrayList<>(fundCodes), 3);
 
         List<CompletableFuture<Void>> futures = batches.stream()
                 .map(batch -> CompletableFuture.runAsync(() -> {
@@ -150,9 +150,9 @@ public class BatchEstimateService {
                         } catch (Exception e) {
                             log.warn("批量获取多源估值失败: {}", fundCode, e);
                         }
-                        // 添加延迟，避免触发限流（每只基金间隔200ms）
+                        // 添加延迟，避免触发限流（每只基金间隔150ms）
                         try {
-                            Thread.sleep(200);
+                            Thread.sleep(150);
                         } catch (InterruptedException ignored) {
                             Thread.currentThread().interrupt();
                         }
