@@ -25,6 +25,9 @@ public class TencentDataSource {
     private final OkHttpClient httpClient;
     private final com.qoder.fund.config.CircuitBreaker circuitBreaker;
 
+    // 腾讯API频率限制严格，使用同步锁强制串行请求
+    private final Object requestLock = new Object();
+
     public TencentDataSource(OkHttpClient httpClient, com.qoder.fund.config.CircuitBreaker circuitBreaker) {
         this.httpClient = httpClient;
         this.circuitBreaker = circuitBreaker;
@@ -32,6 +35,7 @@ public class TencentDataSource {
 
     /**
      * 获取腾讯财经的基金实时估值
+     * 注意：腾讯API有严格频率限制，使用同步锁强制串行请求
      */
     public Map<String, Object> getEstimateNav(String fundCode) {
         // 熔断检查
@@ -40,6 +44,18 @@ public class TencentDataSource {
             return Collections.emptyMap();
         }
 
+        // 同步锁强制串行，避免并发触发频率限制
+        synchronized (requestLock) {
+            // 再次检查熔断状态（可能在等待锁期间状态变化）
+            if (!circuitBreaker.allowRequest(SOURCE_NAME)) {
+                log.warn("腾讯数据源已熔断，跳过请求: {}", fundCode);
+                return Collections.emptyMap();
+            }
+            return doGetEstimateNav(fundCode);
+        }
+    }
+
+    private Map<String, Object> doGetEstimateNav(String fundCode) {
         try {
             String url = "https://qt.gtimg.cn/q=jj" + fundCode;
 
