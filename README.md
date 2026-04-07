@@ -46,7 +46,8 @@
 - [x] **实时估值** - 多数据源估值聚合，智能权重算法
 - [x] **资产配置** - 按行业分布展示资产配置饼图
 - [x] **收益分析** - 收益曲线、回撤分析、夏普比率、胜率统计
-- [x] **CLI 工具** - 命令行接口，支持定时任务和数据同步
+- [x] **CLI 工具** - 命令行接口，支持定时任务、数据同步、收益播报
+- [x] **日志系统** - 分级日志、请求日志、API 日志拦截器
 
 ### 进行中功能
 
@@ -163,6 +164,11 @@ java -jar target/fund-0.0.1-SNAPSHOT-cli.jar position list
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync nav          # 同步净值
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync estimate     # 快照估值
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar sync all          # 全部同步
+
+# 收益播报（适合定时任务和语音播报）
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast           # 播报格式
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --brief   # 简洁模式
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --json    # JSON 格式
 
 # 或使用脚本
 ./scripts/fund-cli fund search 白酒
