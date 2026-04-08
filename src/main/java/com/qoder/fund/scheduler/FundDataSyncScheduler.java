@@ -394,8 +394,66 @@ public class FundDataSyncScheduler {
             nav.setAccNav(toBigDecimal(navData.get("accNav")));
             nav.setDailyReturn(toBigDecimal(navData.get("dailyReturn")));
             fundNavMapper.insert(nav);
+
+            // QDII 基金净值延迟发布(T+1)，需要回填前一天的预测记录
+            evaluateQdiiPredictionForNavDate(fundCode, nav.getNavDate(), nav.getNav(), nav.getDailyReturn());
         } catch (Exception e) {
             log.warn("保存净值失败: fund={}", fundCode, e);
+        }
+    }
+
+    /**
+     * 当 QDII 基金净值发布时，回填对应 predict_date 的预测记录
+     * QDII 流程：Day N 23:00 快照预测(predict_date=Day N) → Day N+1 22:00 发布净值 → 需要回填 Day N 的预测
+     *
+     * @param fundCode   基金代码
+     * @param navDate    净值日期（实际净值对应的日期）
+     * @param actualNav  实际净值
+     * @param actualReturn 实际涨跌幅
+     */
+    private void evaluateQdiiPredictionForNavDate(String fundCode, LocalDate navDate,
+                                                   BigDecimal actualNav, BigDecimal actualReturn) {
+        try {
+            // 查询该基金前一天的未评估预测记录
+            // QDII 的 predict_date 是净值日期的前一天（因为预测的是当日海外市场涨跌）
+            LocalDate predictDate = navDate.minusDays(1);
+
+            List<EstimatePrediction> pendingPredictions = estimatePredictionMapper.selectList(
+                    new QueryWrapper<EstimatePrediction>()
+                            .eq("fund_code", fundCode)
+                            .eq("predict_date", predictDate)
+                            .isNull("actual_return")
+            );
+
+            if (pendingPredictions.isEmpty()) {
+                return;
+            }
+
+            int evaluated = 0;
+            for (EstimatePrediction prediction : pendingPredictions) {
+                prediction.setActualNav(actualNav);
+                prediction.setActualReturn(actualReturn);
+
+                // 计算误差 = 预测涨跌幅 - 实际涨跌幅
+                if (prediction.getPredictedReturn() != null && actualReturn != null) {
+                    prediction.setReturnError(
+                            prediction.getPredictedReturn().subtract(actualReturn)
+                                    .setScale(4, RoundingMode.HALF_UP)
+                    );
+                }
+
+                estimatePredictionMapper.updateById(prediction);
+                evaluated++;
+                log.debug("QDII 预测评估完成: fund={}, predict_date={}, source={}",
+                        fundCode, predictDate, prediction.getSourceKey());
+            }
+
+            if (evaluated > 0) {
+                log.info("QDII 净值发布后回填预测评估: fund={}, nav_date={}, predict_date={}, 评估 {} 条记录",
+                        fundCode, navDate, predictDate, evaluated);
+            }
+        } catch (Exception e) {
+            log.warn("QDII 预测评估回填失败: fund={}, nav_date={}", fundCode, navDate, e);
         }
     }
 
