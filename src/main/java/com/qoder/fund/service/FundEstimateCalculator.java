@@ -4,7 +4,6 @@ import com.qoder.fund.dto.EstimateSourceDTO;
 import com.qoder.fund.datasource.EastMoneyDataSource;
 import com.qoder.fund.datasource.SinaDataSource;
 import com.qoder.fund.datasource.StockEstimateDataSource;
-import com.qoder.fund.datasource.TencentDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,7 +24,6 @@ public class FundEstimateCalculator {
 
     private final EastMoneyDataSource eastMoneyDataSource;
     private final SinaDataSource sinaDataSource;
-    private final TencentDataSource tencentDataSource;
     private final StockEstimateDataSource stockEstimateDataSource;
 
     /**
@@ -88,21 +86,19 @@ public class FundEstimateCalculator {
         // QDII基金：股票估值权重更高
         if ("QDII".equals(fundType)) {
             return switch (sourceKey) {
-                case "stock" -> new BigDecimal("0.4");
-                case "eastmoney" -> new BigDecimal("0.3");
-                case "sina" -> new BigDecimal("0.15");
-                case "tencent" -> new BigDecimal("0.15");
-                default -> new BigDecimal("0.25");
+                case "stock" -> new BigDecimal("0.45");
+                case "eastmoney" -> new BigDecimal("0.35");
+                case "sina" -> new BigDecimal("0.20");
+                default -> new BigDecimal("0.33");
             };
         }
 
         // 默认权重
         return switch (sourceKey) {
-            case "eastmoney" -> new BigDecimal("0.35");
-            case "sina" -> new BigDecimal("0.25");
-            case "tencent" -> new BigDecimal("0.25");
-            case "stock" -> new BigDecimal("0.15");
-            default -> new BigDecimal("0.25");
+            case "eastmoney" -> new BigDecimal("0.45");
+            case "sina" -> new BigDecimal("0.30");
+            case "stock" -> new BigDecimal("0.25");
+            default -> new BigDecimal("0.33");
         };
     }
 

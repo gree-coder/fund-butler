@@ -61,7 +61,6 @@ public class HealthCheckConfig {
             Map<String, CircuitBreaker.State> states = Map.of(
                     "eastmoney", circuitBreaker.getState("eastmoney"),
                     "sina", circuitBreaker.getState("sina"),
-                    "tencent", circuitBreaker.getState("tencent"),
                     "stock", circuitBreaker.getState("stock")
             );
 

@@ -501,7 +501,7 @@ public class FundDataSyncScheduler {
                 for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
                     String key = source.getKey();
                     if (!"eastmoney".equals(key) && !"sina".equals(key)
-                            && !"tencent".equals(key) && !"stock".equals(key)) {
+                            && !"stock".equals(key)) {
                         continue;
                     }
                     if (!source.isAvailable()) continue;
@@ -576,7 +576,7 @@ public class FundDataSyncScheduler {
                 for (EstimateSourceDTO.EstimateItem source : estimates.getSources()) {
                     String key = source.getKey();
                     if (!"eastmoney".equals(key) && !"sina".equals(key)
-                            && !"tencent".equals(key) && !"stock".equals(key)) {
+                            && !"stock".equals(key)) {
                         continue;
                     }
                     if (!source.isAvailable()) continue;

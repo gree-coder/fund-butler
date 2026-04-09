@@ -4,9 +4,11 @@
 **本文档引用的文件**
 - [DashboardController.java](file://src/main/java/com/qoder/fund/controller/DashboardController.java)
 - [DashboardService.java](file://src/main/java/com/qoder/fund/service/DashboardService.java)
+- [DashboardCommand.java](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java)
+- [EstimateAnalysisService.java](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java)
 - [DashboardDTO.java](file://src/main/java/com/qoder/fund/dto/DashboardDTO.java)
-- [ProfitTrendDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitTrendDTO.java)
 - [PositionDTO.java](file://src/main/java/com/qoder/fund/dto/PositionDTO.java)
+- [ProfitTrendDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitTrendDTO.java)
 - [PositionService.java](file://src/main/java/com/qoder/fund/service/PositionService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
@@ -27,10 +29,11 @@
 
 ## 更新摘要
 **所做更改**
-- 新增行业分布数据展示功能，实现按市值加权的行业聚合分析
-- 改进图表可视化，新增收益趋势图表和行业分布饼图
-- 增强数据聚合逻辑，支持多维度数据分析和权重计算
-- 完善前端行业分布展示，提供交互式图表和数据钻取功能
+- 新增QDII基金报告功能，区分"已验证"和"待验证"位置分类显示
+- 新增`isUsQdiiFund()`方法用于识别纯美股QDII基金
+- 改进仪表板显示逻辑，优化QDII基金的预估待验证显示
+- EstimateAnalysisService中新增"预估（待验证）"标记逻辑
+- 增强CLI命令行仪表板功能，提供更精确的持仓状态分类
 
 ## 目录
 1. [简介](#简介)
@@ -47,7 +50,7 @@
 
 本文档详细分析了基金投资管理系统中的仪表板增强功能。该系统是一个基于Spring Boot和React的Web应用，专注于为个人投资者提供一站式基金数据聚合管理工具。仪表板作为用户登录后的主页面，提供了投资组合的全面概览，包括资产总览、持仓列表、收益趋势分析和行业分布展示等功能。
 
-**更新** 本次更新重点关注仪表板功能的全面增强，新增了行业分布数据展示、改进的图表可视化和增强的数据聚合逻辑。系统现在能够提供更深入的投资组合分析，帮助用户理解资产在不同行业间的分布情况和风险暴露。
+**更新** 本次更新重点关注仪表板功能的全面增强，特别是QDII基金的报告功能优化。系统现在能够智能区分"已验证"和"待验证"的持仓状态，为用户提供更准确的投资组合状态信息。新增的纯美股QDII识别功能使得系统能够对不同类型的QDII基金采用不同的显示策略，提高了信息的准确性和实用性。
 
 系统采用前后端分离架构，后端使用Java Spring Boot提供RESTful API，前端使用React TypeScript构建用户界面。通过集成多个数据源，系统能够实时获取基金净值、估值和行业分布等关键数据，为用户提供准确的投资决策辅助信息。
 
@@ -75,11 +78,14 @@ M[数据源] --> C
 N[第三方API] --> C
 O[行业分布数据] --> P[FundDataAggregator]
 P --> Q[EastMoneyDataSource]
+R[CLI命令行] --> S[DashboardCommand]
+S --> T[BroadcastCommand]
 ```
 
 **图表来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
 - [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 - [EastMoneyDataSource.java:660-700](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L660-L700)
@@ -87,6 +93,7 @@ P --> Q[EastMoneyDataSource]
 **章节来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
 - [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
 
 ## 核心组件
@@ -105,13 +112,20 @@ DashboardService是核心业务逻辑处理单元，负责：
 - 计算今日收益和预估收益
 - 生成收益趋势数据
 - **新增**：聚合行业分布数据，按市值加权计算行业占比
-- 处理持仓数据聚合和行业分布分析
+- **新增**：处理持仓数据聚合和行业分布分析，支持QDII基金状态分类
+- **新增**：判断持仓是否为实际验证状态，区分延迟数据
+
+#### CLI命令行组件
+**新增**：DashboardCommand提供命令行界面的仪表板功能：
+- **新增**：BroadcastCommand支持收益播报，区分"已验证"和"待验证"持仓
+- **新增**：智能QDII基金识别，使用`isUsQdiiFund()`方法判断纯美股QDII
+- **新增**：优化的QDII基金预估显示逻辑，纯美股QDII不显示具体涨跌
 
 #### DTO层
 系统使用多个DTO对象来封装数据传输：
 - DashboardDTO：仪表板概览数据，**新增**：industryDistribution字段
 - ProfitTrendDTO：收益趋势数据
-- PositionDTO：持仓详情数据，**新增**：industryDist字段
+- PositionDTO：持仓详情数据，**新增**：industryDist字段，**新增**：actualReturnDelayed字段
 - FundDetailDTO：基金详情数据，**新增**：industryDist字段
 
 ### 前端核心组件
@@ -141,6 +155,7 @@ dashboardApi模块提供类型安全的API调用：
 **章节来源**
 - [DashboardController.java:18-34](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L18-L34)
 - [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
+- [DashboardCommand.java:116-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L116-L319)
 - [DashboardDTO.java:22-23](file://src/main/java/com/qoder/fund/dto/DashboardDTO.java#L22-L23)
 - [index.tsx:13-198](file://fund-web/src/pages/Dashboard/index.tsx#L13-L198)
 
@@ -164,6 +179,9 @@ Controller[DashboardController]
 Service[DashboardService]
 PositionService[PositionService]
 FundDataAggregator[FundDataAggregator]
+Command[DashboardCommand]
+Broadcast[BroadcastCommand]
+EstimateAnalysis[EstimateAnalysisService]
 end
 subgraph "数据访问层"
 Mapper[MyBatis Mapper]
@@ -197,11 +215,15 @@ Chart --> UI
 Components --> UI
 Portfolio --> Chart
 Dashboard --> Chart
+Command --> Broadcast
+Broadcast --> EstimateAnalysis
 ```
 
 **图表来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
 - [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
+- [EstimateAnalysisService.java:1-404](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L1-L404)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 - [EastMoneyDataSource.java:660-700](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L660-L700)
 
@@ -231,6 +253,7 @@ DB-->>PositionSvc : 持仓数据
 PositionSvc-->>Service : PositionDTO列表
 Service->>Service : 计算总资产、总收益
 Service->>Service : 计算今日收益和预估收益
+Service->>Service : 判断实际回报是否延迟
 Service->>Service : 聚合行业分布数据
 Note over Service : 按市值加权计算行业占比
 Service-->>Controller : DashboardDTO
@@ -241,6 +264,35 @@ Controller-->>Client : 返回数据
 - [DashboardController.java:18-21](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L18-L21)
 - [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
 - [PositionService.java:33-44](file://src/main/java/com/qoder/fund/service/PositionService.java#L33-L44)
+
+#### QDII基金报告功能流程
+
+```mermaid
+flowchart TD
+Start([开始QDII报告]) --> GetPositions["获取所有持仓"]
+GetPositions --> CheckVerified["检查已验证持仓"]
+CheckVerified --> IsVerified{"有实际回报且非延迟?"}
+IsVerified --> |是| AddToVerified["添加到已验证列表"]
+IsVerified --> |否| AddToPending["添加到待验证列表"]
+AddToVerified --> NextPos1{"还有持仓?"}
+AddToPending --> NextPos2{"还有持仓?"}
+NextPos1 --> |是| CheckVerified
+NextPos1 --> |否| ProcessPending["处理待验证持仓"]
+NextPos2 --> |是| CheckVerified
+NextPos2 --> |否| ProcessPending
+ProcessPending --> ClassifyQDII["分类QDII基金"]
+ClassifyQDII --> IsUSQDII{"是否为纯美股QDII?"}
+IsUSQDII --> |是| USQDII["显示'预估待验证'"]
+IsUSQDII --> |否| OtherQDII["显示预估涨跌*"]
+OtherQDII --> NextPending{"还有待验证持仓?"}
+USQDII --> NextPending
+NextPending --> |是| ClassifyQDII
+NextPending --> |否| End([完成])
+```
+
+**图表来源**
+- [DashboardCommand.java:196-233](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L196-L233)
+- [DashboardCommand.java:246-281](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L246-L281)
 
 #### 行业分布数据聚合流程
 
@@ -270,6 +322,7 @@ ReturnData --> End([结束])
 
 **章节来源**
 - [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
+- [DashboardCommand.java:196-281](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L196-L281)
 
 ### 前端组件架构
 
@@ -398,8 +451,15 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 #### 持仓列表增强
 - 每个持仓项左侧添加基金类型色条
 - 支持估算收益和实际收益双重显示
-- QDII基金显示T+1延迟标识
+- **新增**：QDII基金显示T+1延迟标识
+- **新增**：纯美股QDII基金特殊显示，不显示具体涨跌
 - 点击任意位置即可跳转到基金详情
+
+#### **新增** QDII基金报告功能
+- **已验证持仓**：正常显示涨跌和收益信息
+- **待验证持仓**：显示"预估待验证"或"预估涨跌*"标识
+- **纯美股QDII**：不显示具体涨跌，仅提示预估待验证
+- **其他QDII**：显示预估涨跌，标注待验证状态
 
 #### **新增** 行业分布展示
 - **Dashboard页面**：显示整体投资组合的行业分布
@@ -418,6 +478,7 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 - [index.tsx:110-151](file://fund-web/src/pages/Dashboard/index.tsx#L110-L151)
 - [index.tsx:171-176](file://fund-web/src/pages/Dashboard/index.tsx#L171-L176)
 - [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
+- [DashboardCommand.java:246-294](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L246-L294)
 
 ## 依赖关系分析
 
@@ -434,6 +495,11 @@ subgraph "服务层"
 DS[DashboardService]
 PS[PositionService]
 FDA[FundDataAggregator]
+ES[EstimateAnalysisService]
+end
+subgraph "命令行层"
+DBC[DashboardCommand]
+BC[BroadcastCommand]
 end
 subgraph "数据访问层"
 PM[PositionMapper]
@@ -458,11 +524,16 @@ FDA --> ED
 FDA --> SD
 FDA --> TD
 FDA --> SED
+DBC --> DS
+BC --> DS
+BC --> ES
 ```
 
 **图表来源**
 - [DashboardController.java:15](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L15)
 - [DashboardService.java:33-35](file://src/main/java/com/qoder/fund/service/DashboardService.java#L33-L35)
+- [DashboardCommand.java:46](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L46)
+- [EstimateAnalysisService.java:1-404](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L1-L404)
 - [FundDataAggregator.java:45-55](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L45-L55)
 
 ### 前端依赖关系
@@ -510,6 +581,7 @@ DP --> EC
 **章节来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
 - [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 
 ## 性能考虑
@@ -522,7 +594,9 @@ DP --> EC
 2. **数据库优化**：为常用查询字段建立索引，包括fund_code、account_id等
 3. **数据聚合**：在服务层进行数据聚合，减少数据库查询次数
 4. **BigDecimal精度**：使用适当的舍入模式确保计算精度
-5. ****新增**：行业分布数据聚合优化，使用HashMap进行高效合并操作
+5. **新增**：行业分布数据聚合优化，使用HashMap进行高效合并操作
+6. **新增**：QDII基金状态分类优化，避免重复的字符串匹配操作
+7. **新增**：纯美股QDII识别使用预编译的字符串匹配，提高性能
 
 ### 前端性能优化
 
@@ -530,7 +604,7 @@ DP --> EC
 2. **状态管理**：使用React Hooks管理组件状态，避免不必要的重渲染
 3. **数据缓存**：本地存储金额可见性设置，提升用户体验
 4. **骨架屏**：使用PageSkeleton提供更好的加载体验
-5. ****新增**：图表数据预处理，避免重复计算和渲染
+5. **新增**：图表数据预处理，避免重复计算和渲染
 
 ### 数据源性能
 
@@ -539,8 +613,9 @@ DP --> EC
 - 实时估值数据与收盘后净值数据结合使用
 - 本地缓存机制减少对外部API的依赖
 - **新增**：行业分布数据的批量处理和缓存策略
+- **新增**：QDII基金状态的快速判断机制
 
-**更新** 新增了行业分布数据聚合和图表渲染的性能优化建议。
+**更新** 新增了QDII基金报告功能和行业分布数据的性能优化建议。
 
 **章节来源**
 - [application.yml:18-25](file://src/main/resources/application.yml#L18-L25)
@@ -564,6 +639,21 @@ DP --> EC
 2. 查看浏览器开发者工具中的网络请求
 3. 验证后端服务运行状态
 4. 检查数据库连接配置
+
+#### **新增** QDII基金报告异常
+
+**症状**：QDII基金显示异常或分类错误
+**可能原因**：
+1. 基金名称匹配逻辑错误
+2. QDII基金状态判断逻辑异常
+3. 纯美股QDII识别规则不准确
+4. 实际回报延迟状态判断错误
+
+**解决步骤**：
+1. 检查`isUsQdiiFund()`方法的字符串匹配逻辑
+2. 验证QDII基金分类和显示逻辑
+3. 确认PositionDTO中的actualReturnDelayed字段正确设置
+4. 检查BroadcastCommand中的持仓状态分类逻辑
 
 #### **新增** 行业分布数据异常
 
@@ -613,12 +703,14 @@ DP --> EC
 2. 图表配置错误
 3. 数据格式不匹配
 4. **新增**：行业分布数据格式不兼容
+5. **新增**：QDII基金状态数据格式问题
 
 **解决步骤**：
 1. 检查网络连接和CDN资源
 2. 验证trendOption和pieOption配置
 3. 确认数据格式符合ECharts要求
 4. **新增**：验证industryDistribution数据结构
+5. **新增**：检查QDII基金状态数据的序列化
 
 ### 调试技巧
 
@@ -627,14 +719,18 @@ DP --> EC
 3. **网络调试**：监控API响应时间和错误码
 4. **数据库调试**：检查关键查询的执行计划
 5. **图表调试**：使用浏览器开发者工具检查ECharts实例
-6. ****新增**：行业数据调试**：检查API返回的行业分布数据格式和完整性
+6. **新增**：QDII基金调试**：检查纯美股QDII识别逻辑和状态分类
+7. **新增**：行业数据调试**：检查API返回的行业分布数据格式和完整性
+8. **新增**：预估验证调试**：检查EstimateAnalysisService中的"预估（待验证）"标记逻辑
 
-**更新** 新增了行业分布数据和图表渲染问题的调试方法。
+**更新** 新增了QDII基金报告功能和预估验证相关的调试方法。
 
 **章节来源**
 - [EmptyGuide.tsx:1-35](file://fund-web/src/components/EmptyGuide.tsx#L1-L35)
 - [PageSkeleton.tsx:1-67](file://fund-web/src/components/PageSkeleton.tsx#L1-L67)
 - [client.ts:9-28](file://fund-web/src/api/client.ts#L9-L28)
+- [DashboardCommand.java:283-294](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L283-L294)
+- [EstimateAnalysisService.java:331](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L331)
 
 ## 结论
 
@@ -646,10 +742,12 @@ DP --> EC
 
 1. **完整的数据聚合**：整合多个数据源，提供准确的实时数据
 2. **直观的可视化**：通过图表和卡片布局，让用户快速理解投资状况
-3. ****新增**：深入的行业分析**：提供按市值加权的行业分布，帮助用户理解风险暴露
-4. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
-5. **可扩展的架构**：模块化的组件设计便于后续功能扩展
-6. ****新增**：增强的隐私保护**：金额隐藏功能保护用户财务隐私
+3. **深入的行业分析**：提供按市值加权的行业分布，帮助用户理解风险暴露
+4. **智能的QDII基金报告**：区分"已验证"和"待验证"持仓状态，提供更准确的信息
+5. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
+6. **可扩展的架构**：模块化的组件设计便于后续功能扩展
+7. **增强的隐私保护**：金额隐藏功能保护用户财务隐私
+8. **精确的状态分类**：纯美股QDII的特殊处理提高了信息的准确性
 
 ### 技术亮点
 
@@ -657,8 +755,11 @@ DP --> EC
 - **状态管理**：合理的状态分离和管理机制
 - **错误处理**：完善的错误处理和用户反馈机制
 - **性能优化**：缓存策略和数据优化确保系统响应速度
-- ****新增**：行业数据聚合**：高效的HashMap合并和BigDecimal计算
+- **行业数据聚合**：高效的HashMap合并和BigDecimal计算
 - **现代化UI**：采用Ant Design组件库和ECharts图表库
+- **新增**：QDII基金智能识别和状态分类
+- **新增**：纯美股QDII的特殊显示逻辑
+- **新增**：预估验证状态的完整处理机制
 
 ### 未来改进方向
 
@@ -666,7 +767,9 @@ DP --> EC
 2. **移动端优化**：针对移动设备进行专门的界面优化
 3. **实时更新**：实现更频繁的数据刷新机制
 4. **个性化定制**：允许用户自定义仪表板布局和显示内容
-5. ****新增**：行业深度分析**：提供行业间的相关性分析和风险评估
-6. ****新增**：数据导出功能**：支持行业分布和收益分析数据的导出
+5. **新增**：行业深度分析：提供行业间的相关性分析和风险评估
+6. **新增**：数据导出功能：支持行业分布和收益分析数据的导出
+7. **新增**：QDII基金预警功能：对即将发布净值的QDII基金进行提醒
+8. **新增**：多语言支持：支持中英文等多语言界面
 
-该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化、用户交互和行业分析方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。
+该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化、用户交互、行业分析和QDII基金报告方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。

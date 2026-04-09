@@ -267,7 +267,7 @@ public class EstimateAnalysisService {
                 .collect(Collectors.toSet());
 
         // 按数据源分组（用于确定显示顺序）
-        List<String> sourceOrder = List.of("smart", "eastmoney", "sina", "tencent", "stock");
+        List<String> sourceOrder = List.of("smart", "eastmoney", "sina", "stock");
 
         // 1. 处理已有净值的日期（预估 vs 实际）
         for (FundNav nav : navs) {
@@ -393,7 +393,6 @@ public class EstimateAnalysisService {
         return switch (key) {
             case "eastmoney" -> "天天基金";
             case "sina" -> "新浪财经";
-            case "tencent" -> "腾讯财经";
             case "stock" -> "重仓股估算";
             case "smart" -> "智能综合";
             case "official" -> "官方净值";

@@ -10,7 +10,6 @@ import PageSkeleton from '../../components/PageSkeleton';
 const SOURCE_LABELS: Record<string, string> = {
   eastmoney: '天天基金',
   sina: '新浪财经',
-  tencent: '腾讯财经',
   stock: '重仓股',
 };
 

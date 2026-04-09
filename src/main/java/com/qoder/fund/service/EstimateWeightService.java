@@ -27,44 +27,38 @@ public class EstimateWeightService {
             // ETF实时价格场景
             "ETF实时", Map.of(
                     "eastmoney", new BigDecimal("0.15"),
-                    "sina", new BigDecimal("0.08"),
-                    "tencent", new BigDecimal("0.07"),
-                    "stock", new BigDecimal("0.70")
+                    "sina", new BigDecimal("0.10"),
+                    "stock", new BigDecimal("0.75")
             ),
             // 固收类场景
             "固收类", Map.of(
-                    "eastmoney", new BigDecimal("0.45"),
-                    "sina", new BigDecimal("0.25"),
-                    "tencent", new BigDecimal("0.25"),
-                    "stock", new BigDecimal("0.05")
+                    "eastmoney", new BigDecimal("0.55"),
+                    "sina", new BigDecimal("0.35"),
+                    "stock", new BigDecimal("0.10")
             ),
             // QDII场景
             "QDII", Map.of(
-                    "eastmoney", new BigDecimal("0.40"),
-                    "sina", new BigDecimal("0.25"),
-                    "tencent", new BigDecimal("0.25"),
-                    "stock", new BigDecimal("0.10")
+                    "eastmoney", new BigDecimal("0.50"),
+                    "sina", new BigDecimal("0.35"),
+                    "stock", new BigDecimal("0.15")
             ),
             // 权益高覆盖场景
             "权益高覆盖", Map.of(
-                    "eastmoney", new BigDecimal("0.30"),
-                    "sina", new BigDecimal("0.18"),
-                    "tencent", new BigDecimal("0.17"),
-                    "stock", new BigDecimal("0.35")
+                    "eastmoney", new BigDecimal("0.35"),
+                    "sina", new BigDecimal("0.20"),
+                    "stock", new BigDecimal("0.45")
             ),
             // 权益中覆盖场景
             "权益中覆盖", Map.of(
-                    "eastmoney", new BigDecimal("0.38"),
-                    "sina", new BigDecimal("0.24"),
-                    "tencent", new BigDecimal("0.23"),
-                    "stock", new BigDecimal("0.15")
+                    "eastmoney", new BigDecimal("0.45"),
+                    "sina", new BigDecimal("0.30"),
+                    "stock", new BigDecimal("0.25")
             ),
             // 权益低覆盖场景
             "权益低覆盖", Map.of(
-                    "eastmoney", new BigDecimal("0.43"),
-                    "sina", new BigDecimal("0.26"),
-                    "tencent", new BigDecimal("0.26"),
-                    "stock", new BigDecimal("0.05")
+                    "eastmoney", new BigDecimal("0.55"),
+                    "sina", new BigDecimal("0.35"),
+                    "stock", new BigDecimal("0.10")
             )
     );
 
@@ -143,35 +137,31 @@ public class EstimateWeightService {
         if ("etf_realtime".equals(stockSourceType)) {
             weights = Map.of(
                     "eastmoney", new BigDecimal("0.10"),
-                    "sina", new BigDecimal("0.05"),
-                    "tencent", new BigDecimal("0.05"),
+                    "sina", new BigDecimal("0.10"),
                     "stock", new BigDecimal("0.80")
             );
             scenario = "ETF实时(新基金)";
         } else if ("BOND".equals(fundType) || "MONEY".equals(fundType)) {
             // 固收类：以天天基金为主
             weights = Map.of(
-                    "eastmoney", new BigDecimal("0.70"),
-                    "sina", new BigDecimal("0.15"),
-                    "tencent", new BigDecimal("0.15"),
+                    "eastmoney", new BigDecimal("0.75"),
+                    "sina", new BigDecimal("0.25"),
                     "stock", new BigDecimal("0.00")
             );
             scenario = "固收类(新基金)";
         } else if ("QDII".equals(fundType)) {
             // QDII：以机构估值为主，不信任股票估算
             weights = Map.of(
-                    "eastmoney", new BigDecimal("0.50"),
-                    "sina", new BigDecimal("0.25"),
-                    "tencent", new BigDecimal("0.25"),
+                    "eastmoney", new BigDecimal("0.60"),
+                    "sina", new BigDecimal("0.40"),
                     "stock", new BigDecimal("0.00")
             );
             scenario = "QDII(新基金)";
         } else {
             // 权益类：以天天基金为主，降低股票权重
             weights = Map.of(
-                    "eastmoney", new BigDecimal("0.60"),
-                    "sina", new BigDecimal("0.20"),
-                    "tencent", new BigDecimal("0.20"),
+                    "eastmoney", new BigDecimal("0.70"),
+                    "sina", new BigDecimal("0.30"),
                     "stock", new BigDecimal("0.00")
             );
             scenario = "权益类(新基金)";

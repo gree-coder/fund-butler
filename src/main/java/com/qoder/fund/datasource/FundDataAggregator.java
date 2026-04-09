@@ -45,7 +45,6 @@ public class FundDataAggregator {
     private final EastMoneyDataSource eastMoneyDataSource;
     private final StockEstimateDataSource stockEstimateDataSource;
     private final SinaDataSource sinaDataSource;
-    private final TencentDataSource tencentDataSource;
     private final FundMapper fundMapper;
     private final FundNavMapper fundNavMapper;
     private final EstimatePredictionMapper estimatePredictionMapper;
@@ -131,18 +130,6 @@ public class FundDataAggregator {
             }
         } catch (Exception e) {
             log.warn("新浪财经估值获取失败: {}", fundCode, e);
-        }
-
-        // 备选数据源2: 腾讯财经
-        log.info("新浪财经估值不可用，尝试腾讯财经: {}", fundCode);
-        try {
-            estimate = tencentDataSource.getEstimateNav(fundCode);
-            if (estimate != null && !estimate.isEmpty() && estimate.get("estimateNav") != null) {
-                log.info("使用腾讯财经估值: {} -> {}", fundCode, estimate.get("estimateReturn"));
-                return estimate;
-            }
-        } catch (Exception e) {
-            log.warn("腾讯财经估值获取失败: {}", fundCode, e);
         }
 
         // 兜底: 股票估值
@@ -306,27 +293,7 @@ public class FundDataAggregator {
         }
         sources.add(sinaItem);
 
-        // 数据源3: 腾讯财经实时估值
-        EstimateSourceDTO.EstimateItem tencentItem = new EstimateSourceDTO.EstimateItem();
-        tencentItem.setKey("tencent");
-        tencentItem.setLabel("腾讯财经估值");
-        tencentItem.setDescription("数据来自腾讯财经基金估值接口");
-        try {
-            Map<String, Object> tencentEstimate = tencentDataSource.getEstimateNav(fundCode);
-            if (tencentEstimate != null && !tencentEstimate.isEmpty() && tencentEstimate.get("estimateNav") != null) {
-                tencentItem.setEstimateNav((BigDecimal) tencentEstimate.get("estimateNav"));
-                tencentItem.setEstimateReturn((BigDecimal) tencentEstimate.get("estimateReturn"));
-                tencentItem.setAvailable(true);
-            } else {
-                tencentItem.setAvailable(false);
-            }
-        } catch (Exception e) {
-            log.warn("腾讯财经估值获取失败: {}", fundCode, e);
-            tencentItem.setAvailable(false);
-        }
-        sources.add(tencentItem);
-
-        // 数据源4: 基于重仓股实时行情加权估算 / ETF实时价格
+        // 数据源3: 基于重仓股实时行情加权估算 / ETF实时价格
         EstimateSourceDTO.EstimateItem stockItem = new EstimateSourceDTO.EstimateItem();
         stockItem.setKey("stock");
         stockItem.setLabel("重仓股加权估算");
@@ -359,13 +326,13 @@ public class FundDataAggregator {
         }
         sources.add(stockItem);
 
-        // 数据源5: 智能综合预估 (基于准确度选源，不受实际净值影响)
+        // 数据源4: 智能综合预估 (基于准确度选源，不受实际净值影响)
         EstimateSourceDTO.EstimateItem smartItem = new EstimateSourceDTO.EstimateItem();
         smartItem.setKey("smart");
         smartItem.setLabel("智能综合预估");
 
         // 始终基于估值数据源的准确度进行选择，实际净值已单独展示
-        buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, tencentItem, stockItem, smartItem,
+        buildSmartEstimate(fundCode, eastMoneyItem, sinaItem, stockItem, smartItem,
                 fundType, stockSourceType, coverageRatio);
         sources.add(smartItem);
 
@@ -561,7 +528,6 @@ public class FundDataAggregator {
     private void buildSmartEstimate(String fundCode,
                                     EstimateSourceDTO.EstimateItem eastMoneyItem,
                                     EstimateSourceDTO.EstimateItem sinaItem,
-                                    EstimateSourceDTO.EstimateItem tencentItem,
                                     EstimateSourceDTO.EstimateItem stockItem,
                                     EstimateSourceDTO.EstimateItem smartItem,
                                     String fundType,
@@ -570,7 +536,6 @@ public class FundDataAggregator {
         Map<String, EstimateSourceDTO.EstimateItem> availableSources = new LinkedHashMap<>();
         if (eastMoneyItem.isAvailable()) availableSources.put("eastmoney", eastMoneyItem);
         if (sinaItem.isAvailable()) availableSources.put("sina", sinaItem);
-        if (tencentItem.isAvailable()) availableSources.put("tencent", tencentItem);
         if (stockItem.isAvailable()) availableSources.put("stock", stockItem);
 
         if (availableSources.isEmpty()) {
