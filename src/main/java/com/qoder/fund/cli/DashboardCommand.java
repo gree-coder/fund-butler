@@ -13,6 +13,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 /**
@@ -191,23 +193,41 @@ public class DashboardCommand implements Callable<Integer> {
             sb.append("   金额: ").append(profit).append("\n");
             sb.append("   涨幅: ").append(rate).append("\n\n");
 
-            // 持仓表现
+            // 持仓表现 - 区分"已验证"和"待验证"
             if (d.getPositions() != null && !d.getPositions().isEmpty()) {
-                sb.append("────────────────────────────────────────\n");
-                sb.append("📋 持仓表现\n");
-                sb.append("────────────────────────────────────────\n");
+                // 分组：已验证（有实际净值且非延迟） vs 待验证（无实际净值或延迟）
+                List<PositionDTO> verifiedPositions = new ArrayList<>();
+                List<PositionDTO> pendingPositions = new ArrayList<>();
 
                 for (PositionDTO p : d.getPositions()) {
-                    String estimateReturn = p.getEstimateReturn() != null
-                            ? formatPercent(p.getEstimateReturn()) : "--";
-                    String profitSign = p.getEstimateReturn() != null && p.getEstimateReturn().compareTo(BigDecimal.ZERO) >= 0 ? "📈" : "📉";
-                    sb.append(String.format("  %s %-20s %s\n", profitSign,
-                            truncate(p.getFundName(), 20), estimateReturn));
+                    boolean isVerified = p.getActualReturn() != null
+                            && !Boolean.TRUE.equals(p.getActualReturnDelayed());
+                    if (isVerified) {
+                        verifiedPositions.add(p);
+                    } else {
+                        pendingPositions.add(p);
+                    }
+                }
 
-                    if (includePositions) {
-                        sb.append(String.format("     市值: %s | 持有收益: %s\n",
-                                formatMoney(p.getMarketValue()),
-                                formatMoney(p.getProfit())));
+                // 已验证持仓
+                if (!verifiedPositions.isEmpty()) {
+                    sb.append("────────────────────────────────────────\n");
+                    sb.append("📋 持仓表现（已验证）\n");
+                    sb.append("────────────────────────────────────────\n");
+
+                    for (PositionDTO p : verifiedPositions) {
+                        appendPositionLine(sb, p, false);
+                    }
+                }
+
+                // 待验证持仓（QDII等）
+                if (!pendingPositions.isEmpty()) {
+                    sb.append("\n────────────────────────────────────────\n");
+                    sb.append("⏳ 待验证持仓（QDII延迟）\n");
+                    sb.append("────────────────────────────────────────\n");
+
+                    for (PositionDTO p : pendingPositions) {
+                        appendPositionLine(sb, p, true);
                     }
                 }
             }
@@ -217,6 +237,60 @@ public class DashboardCommand implements Callable<Integer> {
             sb.append("══════════════════════════════════════\n");
 
             return sb.toString();
+        }
+
+        /**
+         * 追加单行持仓信息
+         * @param isPending 是否为待验证持仓
+         */
+        private void appendPositionLine(StringBuilder sb, PositionDTO p, boolean isPending) {
+            boolean isQdii = "QDII".equals(p.getFundType());
+            boolean isUsQdii = isUsQdiiFund(p.getFundName());
+
+            if (isPending && isUsQdii) {
+                // 纯美股 QDII：不报具体涨跌，说明待验证
+                sb.append(String.format("  🔮 %-20s 预估待验证\n",
+                        truncate(p.getFundName(), 20)));
+                if (includePositions) {
+                    sb.append("     💡 美股刚开盘，预估数据待后续净值回填验证\n");
+                }
+            } else if (isPending && isQdii) {
+                // 其他 QDII：报预估涨跌，但标注待验证
+                String estimateReturn = p.getEstimateReturn() != null
+                        ? formatPercent(p.getEstimateReturn()) : "--";
+                String profitSign = p.getEstimateReturn() != null && p.getEstimateReturn().compareTo(BigDecimal.ZERO) >= 0 ? "📈" : "📉";
+                sb.append(String.format("  %s %-20s %s *\n", profitSign,
+                        truncate(p.getFundName(), 20), estimateReturn));
+                if (includePositions) {
+                    sb.append("     💡 净值延迟发布，预估待后续验证\n");
+                }
+            } else {
+                // 已验证持仓：正常报涨跌
+                String estimateReturn = p.getEstimateReturn() != null
+                        ? formatPercent(p.getEstimateReturn()) : "--";
+                String profitSign = p.getEstimateReturn() != null && p.getEstimateReturn().compareTo(BigDecimal.ZERO) >= 0 ? "📈" : "📉";
+                sb.append(String.format("  %s %-20s %s\n", profitSign,
+                        truncate(p.getFundName(), 20), estimateReturn));
+
+                if (includePositions) {
+                    sb.append(String.format("     市值: %s | 持有收益: %s\n",
+                            formatMoney(p.getMarketValue()),
+                            formatMoney(p.getProfit())));
+                }
+            }
+        }
+
+        /**
+         * 判断是否为纯美股 QDII 基金（通过名称关键词）
+         */
+        private boolean isUsQdiiFund(String fundName) {
+            if (fundName == null) return false;
+            String name = fundName.toLowerCase();
+            // 美股关键词：纳斯达克、标普、道琼斯、美股、纳指等
+            return name.contains("纳斯达克") || name.contains("纳指")
+                    || name.contains("标普") || name.contains("s&p")
+                    || name.contains("道琼斯") || name.contains("美股")
+                    || name.contains("纳斯") || name.contains("qdii纳斯");
         }
 
         private String formatMoney(BigDecimal amount) {

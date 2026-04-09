@@ -111,18 +111,42 @@ public class FundDataAggregator {
 
     /**
      * 获取实时估值(多源验证+兜底)
+     * 优化：主数据源不可用时，依次尝试新浪、腾讯，最后才用股票兜底
      */
     @Cacheable(value = "estimateNav", key = "#fundCode", unless = "#result == null || #result.isEmpty()")
     public Map<String, Object> getEstimateNav(String fundCode) {
-        // 主数据源估值
+        // 主数据源估值: 天天基金
         Map<String, Object> estimate = eastMoneyDataSource.getEstimateNav(fundCode);
-
-        if (estimate != null && !estimate.isEmpty()) {
+        if (estimate != null && !estimate.isEmpty() && estimate.get("estimateNav") != null) {
             return estimate;
         }
 
+        // 备选数据源1: 新浪财经
+        log.info("天天基金估值不可用，尝试新浪财经: {}", fundCode);
+        try {
+            estimate = sinaDataSource.getEstimateNav(fundCode);
+            if (estimate != null && !estimate.isEmpty() && estimate.get("estimateNav") != null) {
+                log.info("使用新浪财经估值: {} -> {}", fundCode, estimate.get("estimateReturn"));
+                return estimate;
+            }
+        } catch (Exception e) {
+            log.warn("新浪财经估值获取失败: {}", fundCode, e);
+        }
+
+        // 备选数据源2: 腾讯财经
+        log.info("新浪财经估值不可用，尝试腾讯财经: {}", fundCode);
+        try {
+            estimate = tencentDataSource.getEstimateNav(fundCode);
+            if (estimate != null && !estimate.isEmpty() && estimate.get("estimateNav") != null) {
+                log.info("使用腾讯财经估值: {} -> {}", fundCode, estimate.get("estimateReturn"));
+                return estimate;
+            }
+        } catch (Exception e) {
+            log.warn("腾讯财经估值获取失败: {}", fundCode, e);
+        }
+
         // 兜底: 股票估值
-        log.info("使用股票兜底估值: {}", fundCode);
+        log.info("所有机构估值不可用，使用股票兜底估值: {}", fundCode);
         Fund fund = fundMapper.selectById(fundCode);
         if (fund != null) {
             BigDecimal lastNav = getLatestNav(fundCode);
