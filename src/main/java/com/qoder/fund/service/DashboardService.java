@@ -158,20 +158,19 @@ public class DashboardService {
 
     public ProfitTrendDTO getProfitTrend(int days) {
         ProfitTrendDTO dto = new ProfitTrendDTO();
-        List<String> dates = new ArrayList<>();
-        List<BigDecimal> profits = new ArrayList<>();
 
-        // 生成日期列表 (简化实现：返回占位数据，真实数据需要每日净值记录)
-        LocalDate today = LocalDate.now();
-        DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDate date = today.minusDays(i);
-            dates.add(date.format(fmt));
-            profits.add(BigDecimal.ZERO);
+        // 复用 getProfitAnalysis 的计算逻辑
+        ProfitAnalysisDTO analysis = getProfitAnalysis(days);
+
+        if (analysis.getDates() != null && analysis.getCumulativeProfits() != null) {
+            dto.setDates(analysis.getDates());
+            dto.setProfits(analysis.getCumulativeProfits());
+        } else {
+            // 降级：返回空数据
+            dto.setDates(new ArrayList<>());
+            dto.setProfits(new ArrayList<>());
         }
 
-        dto.setDates(dates);
-        dto.setProfits(profits);
         return dto;
     }
 

@@ -120,29 +120,33 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<mainClass>com.qoder.fund.FundApplication</mainClass>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
 				<executions>
+					<!-- Web JAR（默认，无 classifier） -->
 					<execution>
 						<id>repackage</id>
 						<goals>
 							<goal>repackage</goal>
 						</goals>
 					</execution>
-				</executions>
-			</plugin>
-			<!-- CLI 打包插件 -->
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-				<configuration>
-					<mainClass>com.qoder.fund.cli.FundCliApplication</mainClass>
-					<classifier>cli</classifier>
-				</configuration>
-				<executions>
+					<!-- CLI JAR（classifier=cli） -->
 					<execution>
 						<id>repackage-cli</id>
 						<goals>
 							<goal>repackage</goal>
 						</goals>
+						<configuration>
+							<mainClass>com.qoder.fund.cli.FundCliApplication</mainClass>
+							<classifier>cli</classifier>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>

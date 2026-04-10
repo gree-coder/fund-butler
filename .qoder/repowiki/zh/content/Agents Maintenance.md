@@ -1,4 +1,4 @@
-# Agents Maintenance
+# AI Agent 维护
 
 <cite>
 **本文引用的文件**
@@ -8,29 +8,59 @@
 - [SPEC.md](file://SPEC.md)
 - [README.md](file://README.md)
 - [FundApplication.java](file://src/main/java/com/qoder/fund/FundApplication.java)
-- [pom.xml](file://pom.xml)
-- [application.yml](file://src/main/resources/application.yml)
-- [schema.sql](file://src/main/resources/db/schema.sql)
+- [FundDataSyncScheduler.java](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java)
+- [FundCliApplication.java](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
-- [FundService.java](file://src/main/java/com/qoder/fund/service/FundService.java)
-- [FundController.java](file://src/main/java/com/qoder/fund/controller/FundController.java)
-- [App.tsx](file://fund-web/src/App.tsx)
+- [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
+- [setup-harness.sh](file://scripts/setup-harness.sh)
+- [install-cron.sh](file://scripts/install-cron.sh)
+- [adr-001-tech-stack.md](file://docs/architecture/adr-001-tech-stack.md)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增 Harness Engineering 方法论在项目中的应用说明
+- 更新 AI Agent 在自动化部署和 cron 作业管理中的新作用
+- 增强定时任务调度和数据同步机制的文档说明
+- 完善 CLI 工具在 AI Agent 协作流程中的角色定位
+- 新增数据源熔断器和降级策略的技术细节
 
 ## 目录
 1. [简介](#简介)
-2. [项目结构](#项目结构)
-3. [核心组件](#核心组件)
-4. [架构总览](#架构总览)
-5. [详细组件分析](#详细组件分析)
-6. [依赖分析](#依赖分析)
-7. [性能考虑](#性能考虑)
-8. [故障排查指南](#故障排查指南)
-9. [结论](#结论)
-10. [附录](#附录)
+2. [Harness Engineering 方法论](#harness-engineering-方法论)
+3. [项目结构](#项目结构)
+4. [核心组件](#核心组件)
+5. [架构总览](#架构总览)
+6. [详细组件分析](#详细组件分析)
+7. [AI Agent 协作流程](#ai-agent-协作流程)
+8. [自动化部署与 Cron 作业管理](#自动化部署与-cron-作业管理)
+9. [依赖分析](#依赖分析)
+10. [性能考虑](#性能考虑)
+11. [故障排查指南](#故障排查指南)
+12. [结论](#结论)
+13. [附录](#附录)
 
 ## 简介
-本文件面向 AI Agent，系统化梳理“Agents Maintenance”相关的项目维护工作，涵盖项目概述、开发规范、协作流程、技术架构、核心组件职责、数据流与处理逻辑、依赖关系、性能与故障排查建议，以及维护检查清单。目标是帮助 Agent 在不直接阅读源码的情况下，也能高效地理解与维护该基金数据聚合管理系统的后端与前端。
+本文档面向 AI Agent，系统化梳理"Agents Maintenance"相关的项目维护工作，重点体现 Harness Engineering 方法论在项目中的应用。文档涵盖项目概述、开发规范、协作流程、技术架构、核心组件职责、数据流与处理逻辑、依赖关系、性能与故障排查建议，以及维护检查清单。目标是帮助 Agent 在不直接阅读源码的情况下，也能高效地理解与维护该基金数据聚合管理系统的后端与前端。
+
+## Harness Engineering 方法论
+Harness Engineering 是本项目采用的系统化工程方法论，旨在通过标准化的工具链、自动化流程和质量保证机制，提升 AI Agent 的开发效率和代码质量。
+
+### 核心原则
+- **标准化工具链**：统一的 Git hooks、CI/CD、代码检查工具
+- **自动化流程**：从代码提交到部署的全流程自动化
+- **质量保证**：通过熔断器、降级策略、缓存机制确保系统稳定性
+- **可观测性**：完整的日志系统、监控指标和错误追踪
+
+### 关键组件
+- **预提交钩子**：自动执行代码检查和格式化
+- **CI/CD 工作流**：GitHub Actions 自动化测试和部署
+- **熔断器模式**：外部数据源故障时的降级策略
+- **缓存策略**：多层级缓存机制确保系统响应性能
+
+**章节来源**
+- [setup-harness.sh:1-87](file://scripts/setup-harness.sh#L1-L87)
+- [AGENTS.md:112-132](file://AGENTS.md#L112-L132)
 
 ## 项目结构
 项目采用前后端分离架构，后端基于 Spring Boot，前端基于 React + TypeScript，支持 Web 与 CLI 双模式运行。核心模块包括：
@@ -41,66 +71,76 @@
 
 ```mermaid
 graph TB
+subgraph "Harness Engineering 框架"
+SETUP["setup-harness.sh<br/>工具链安装"]
+PRE_COMMIT[".git/hooks/pre-commit<br/>代码检查钩子"]
+CI[".github/workflows/ci.yml<br/>CI/CD 工作流"]
+ENDTOEND["端到端测试<br/>自动化验证"]
+end
 subgraph "后端"
 FA["FundApplication<br/>启动类"]
-CFG["application.yml<br/>数据库/缓存/Jackson/Actuator"]
-POM["pom.xml<br/>依赖与插件"]
-DS["FundDataAggregator<br/>多数据源聚合器"]
-SVC["FundService<br/>业务服务"]
-CTRL["FundController<br/>REST 控制器"]
+SCHED["FundDataSyncScheduler<br/>定时任务调度"]
+CLI["FundCliApplication<br/>CLI 启动器"]
+AGG["FundDataAggregator<br/>多数据源聚合器"]
+end
+subgraph "数据源层"
+EM["EastMoneyDataSource<br/>主数据源"]
+SINA["SinaDataSource<br/>备用数据源"]
+STOCK["StockEstimateDataSource<br/>股票兜底"]
+CB["CircuitBreaker<br/>熔断器"]
 end
 subgraph "前端"
 APP["App.tsx<br/>路由与主题"]
 end
-subgraph "数据库"
-SCHEMA["schema.sql<br/>表结构与索引"]
-end
-APP --> CTRL
-CTRL --> SVC
-SVC --> DS
-DS --> CFG
-FA --> CFG
-FA --> POM
-SCHEMA --> CFG
+SETUP --> PRE_COMMIT
+SETUP --> CI
+SETUP --> ENDTOEND
+SCHED --> EM
+SCHED --> AGG
+CLI --> SCHED
+AGG --> EM
+AGG --> SINA
+AGG --> STOCK
+AGG --> CB
 ```
 
 **图表来源**
-- [FundApplication.java:1-16](file://src/main/java/com/qoder/fund/FundApplication.java#L1-L16)
-- [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
-- [pom.xml:1-174](file://pom.xml#L1-L174)
-- [FundDataAggregator.java:1-712](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L712)
-- [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
-- [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
-- [App.tsx:1-67](file://fund-web/src/App.tsx#L1-L67)
-- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
+- [setup-harness.sh:1-87](file://scripts/setup-harness.sh#L1-L87)
+- [FundDataSyncScheduler.java:1-725](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L1-L725)
+- [FundCliApplication.java:1-215](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L1-L215)
+- [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 
 **章节来源**
 - [README.md:180-211](file://README.md#L180-L211)
 - [SPEC.md:56-113](file://SPEC.md#L56-L113)
 
 ## 核心组件
-- 启动与配置
-  - 后端启动类负责扫描 Mapper 与启动 Spring Boot 应用
-  - Maven 配置包含 Web、MyBatis-Plus、MySQL、OkHttp、Lombok、Picocli、Actuator、Checkstyle 等依赖
-  - Spring Boot 配置定义数据库连接、缓存、Jackson 序列化、MyBatis-Plus 全局配置、Actuator 暴露端点
-- 数据聚合与服务
-  - FundDataAggregator 实现多数据源聚合、缓存、兜底估值、智能权重与准确度修正
-  - FundService 提供搜索、详情、净值历史、多源估值、刷新等业务方法
-  - FundController 提供 REST 接口，统一返回 Result 包装
-- 前端路由与主题
-  - App.tsx 定义路由与 Ant Design 主题配置，承载所有页面
+- **Harness Engineering 工具链**
+  - setup-harness.sh 自动安装 Git hooks、Maven wrapper 和依赖
+  - 预提交钩子自动执行代码检查和格式化
+  - CI/CD 工作流自动化测试和部署
+- **定时任务调度系统**
+  - FundDataSyncScheduler 负责净值同步、估值快照、预测评估
+  - 支持 A股和QDII基金差异化处理
+  - 多批次评估确保预测准确性
+- **多数据源聚合器**
+  - 主数据源：天天基金/东方财富
+  - 备用数据源：新浪财经
+  - 兜底策略：股票重仓股加权估算
+  - 熔断器模式：外部数据源故障时的降级策略
+- **CLI 命令行工具**
+  - 支持基金查询、持仓管理、数据同步等命令
+  - 专为 AI Agent 定时任务设计的简洁模式
+  - JSON 格式输出便于自动化集成
 
 **章节来源**
-- [FundApplication.java:1-16](file://src/main/java/com/qoder/fund/FundApplication.java#L1-L16)
-- [pom.xml:20-116](file://pom.xml#L20-L116)
-- [application.yml:4-68](file://src/main/resources/application.yml#L4-L68)
-- [FundDataAggregator.java:36-101](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L101)
-- [FundService.java:20-75](file://src/main/java/com/qoder/fund/service/FundService.java#L20-L75)
-- [FundController.java:24-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L79)
-- [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
+- [setup-harness.sh:1-87](file://scripts/setup-harness.sh#L1-L87)
+- [FundDataSyncScheduler.java:1-725](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L1-L725)
+- [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
+- [FundCliApplication.java:1-215](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L1-L215)
 
 ## 架构总览
-系统采用分层架构：前端通过 REST API 与后端交互，后端按 Controller → Service → Mapper 分层，数据访问通过 MyBatis-Plus，缓存使用 Caffeine，定时任务负责数据同步，CLI 模式支持命令行工具。
+系统采用分层架构：前端通过 REST API 与后端交互，后端按 Controller → Service → Mapper 分层，数据访问通过 MyBatis-Plus，缓存使用 Caffeine，定时任务负责数据同步，CLI 模式支持命令行工具。Harness Engineering 方法论贯穿整个架构，提供标准化的工具链和质量保证机制。
 
 ```mermaid
 graph TB
@@ -108,182 +148,224 @@ FE["前端 React 应用<br/>App.tsx 路由"]
 API["后端 REST API<br/>FundController"]
 SVC_LAYER["业务层<br/>FundService"]
 AGG["数据聚合器<br/>FundDataAggregator"]
-DB["数据库<br/>schema.sql 表结构"]
+SCHED["定时任务调度<br/>FundDataSyncScheduler"]
+CLI["CLI 命令行<br/>FundCliApplication"]
+CB["熔断器<br/>CircuitBreaker"]
+EM["主数据源<br/>EastMoneyDataSource"]
+SINA["备用数据源<br/>SinaDataSource"]
+STOCK["股票兜底<br/>StockEstimateDataSource"]
 CACHE["本地缓存<br/>Caffeine"]
-SCHED["定时任务<br/>数据同步"]
-CLI["CLI 命令行<br/>Picocli"]
+DB["数据库<br/>schema.sql 表结构"]
 FE --> API
 API --> SVC_LAYER
 SVC_LAYER --> AGG
-AGG --> CACHE
-AGG --> DB
+AGG --> CB
+AGG --> EM
+AGG --> SINA
+AGG --> STOCK
+SCHED --> EM
 SCHED --> AGG
-CLI --> API
+CLI --> SCHED
+SCHED --> CACHE
+SCHED --> DB
 ```
 
 **图表来源**
 - [SPEC.md:27-52](file://SPEC.md#L27-L52)
-- [FundController.java:24-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L79)
-- [FundService.java:20-75](file://src/main/java/com/qoder/fund/service/FundService.java#L20-L75)
 - [FundDataAggregator.java:36-101](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L101)
-- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
-- [application.yml:29-36](file://src/main/resources/application.yml#L29-L36)
-- [pom.xml:41-49](file://pom.xml#L41-L49)
+- [FundDataSyncScheduler.java:1-725](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L1-L725)
+- [FundCliApplication.java:1-215](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L1-L215)
 
 ## 详细组件分析
 
-### 组件 A：多数据源聚合器（FundDataAggregator）
+### 组件 A：定时任务调度系统（FundDataSyncScheduler）
 职责与特性：
-- 搜索与详情缓存：对搜索与详情使用缓存，避免重复请求外部数据源
-- 多源估值：优先主数据源（天天基金），失败时降级到备用源（新浪财经），最终使用股票重仓股加权兜底
-- 智能权重与准确度修正：基于历史预测准确度（MAE）动态调整权重，冷启动期使用保守权重
-- 实际净值检测：检测当日是否已发布实际净值，延迟发布（如 QDII）时回退到最近交易日
-- 批量预同步：定时预同步当日净值，避免后续查询失败
-- 刷新机制：支持按基金代码手动刷新详情与估值缓存
-
-```mermaid
-classDiagram
-class FundDataAggregator {
-+searchFund(keyword) FundSearchDTO[]
-+getFundDetail(fundCode) FundDetailDTO
-+getNavHistory(fundCode,startDate,endDate) Map[]
-+getEstimateNav(fundCode) Map~String,Object~
-+getMultiSourceEstimates(fundCode) EstimateSourceDTO
-+refreshFundData(fundCode) RefreshResultDTO
-+ensureTodayNavSynced(fundCodes) void
-}
-class EastMoneyDataSource
-class SinaDataSource
-class StockEstimateDataSource
-class FundPersistenceService
-class FundEstimateCalculator
-class EstimateWeightService
-class EstimatePredictionMapper
-class FundMapper
-class FundNavMapper
-FundDataAggregator --> EastMoneyDataSource : "主数据源"
-FundDataAggregator --> SinaDataSource : "备用数据源"
-FundDataAggregator --> StockEstimateDataSource : "股票兜底"
-FundDataAggregator --> FundPersistenceService : "持久化"
-FundDataAggregator --> FundEstimateCalculator : "估值计算"
-FundDataAggregator --> EstimateWeightService : "权重策略"
-FundDataAggregator --> EstimatePredictionMapper : "准确度数据"
-FundDataAggregator --> FundMapper : "读取基金信息"
-FundDataAggregator --> FundNavMapper : "读取净值"
-```
-
-**图表来源**
-- [FundDataAggregator.java:36-101](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L101)
-- [FundDataAggregator.java:115-146](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L115-L146)
-- [FundDataAggregator.java:237-341](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L237-L341)
-- [FundDataAggregator.java:528-620](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L528-L620)
-
-**章节来源**
-- [FundDataAggregator.java:36-101](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L101)
-- [FundDataAggregator.java:115-146](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L115-L146)
-- [FundDataAggregator.java:237-341](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L237-L341)
-- [FundDataAggregator.java:528-620](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L528-L620)
-
-### 组件 B：服务层（FundService）
-职责与特性：
-- 搜索：关键词长度≥2时才发起搜索
-- 详情：委托聚合器获取详情
-- 净值历史：根据周期计算起止日期，调用聚合器获取原始数据并转换为 DTO
-- 多源估值：返回各数据源估值与智能综合预估
-- 刷新：清理缓存并重新获取详情与估值
+- **启动数据补偿**：应用启动时自动补偿缺失的净值数据、回填预测评估、刷新重仓股数据
+- **净值同步**：每日 19:30 同步交易日净值，21:30 补充同步未发布的净值
+- **估值快照**：A股基金每日 14:50 快照，QDII基金每日 23:00 快照
+- **预测评估**：分三批评估预测准确度（20:00、21:00、22:00）
+- **重仓股同步**：每周一 20:00 同步用户关注基金的重仓股数据
+- **QDII 特殊处理**：针对 T+1 净值延迟发布的特殊评估流程
 
 ```mermaid
 sequenceDiagram
-participant C as "客户端"
-participant Ctrl as "FundController"
-participant Svc as "FundService"
-participant Agg as "FundDataAggregator"
-C->>Ctrl : GET /api/fund/{code}/estimates
-Ctrl->>Svc : getMultiSourceEstimates(code)
-Svc->>Agg : getMultiSourceEstimates(code)
-Agg-->>Svc : EstimateSourceDTO
-Svc-->>Ctrl : EstimateSourceDTO
-Ctrl-->>C : Result.success(data)
+participant SCHED as "定时任务调度器"
+participant EM as "主数据源"
+participant AGG as "数据聚合器"
+participant DB as "数据库"
+SCHED->>EM : 获取净值历史
+EM-->>SCHED : 返回净值数据
+SCHED->>DB : 保存净值记录
+SCHED->>AGG : 评估QDII预测
+AGG->>DB : 回填预测评估
+DB-->>AGG : 返回评估结果
+AGG-->>SCHED : 更新预测状态
+SCHED->>DB : 保存评估结果
 ```
 
 **图表来源**
-- [FundController.java:56-59](file://src/main/java/com/qoder/fund/controller/FundController.java#L56-L59)
-- [FundService.java:67-69](file://src/main/java/com/qoder/fund/service/FundService.java#L67-L69)
-- [FundDataAggregator.java:237-341](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L237-L341)
+- [FundDataSyncScheduler.java:224-247](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L224-L247)
+- [FundDataSyncScheduler.java:398-403](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L398-L403)
 
 **章节来源**
-- [FundService.java:26-74](file://src/main/java/com/qoder/fund/service/FundService.java#L26-L74)
-- [FundController.java:32-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L77)
+- [FundDataSyncScheduler.java:56-75](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L56-L75)
+- [FundDataSyncScheduler.java:224-247](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L224-L247)
+- [FundDataSyncScheduler.java:474-535](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L474-L535)
 
-### 组件 C：控制器层（FundController）
+### 组件 B：多数据源聚合器（FundDataAggregator）
 职责与特性：
-- 提供搜索、详情、净值历史、多源估值、刷新、估计分析等接口
-- 统一返回 Result 包装，便于前端处理
-- 对不存在的基金返回 404 错误
+- **搜索与详情缓存**：对搜索与详情使用缓存，避免重复请求外部数据源
+- **多源估值**：优先主数据源（天天基金），失败时降级到备用源（新浪财经），最终使用股票重仓股加权兜底
+- **智能权重与准确度修正**：基于历史预测准确度（MAE）动态调整权重，冷启动期使用保守权重
+- **熔断器模式**：外部数据源故障时自动降级，确保系统稳定性
+- **实时估值检测**：检测当日是否已发布实际净值，延迟发布（如 QDII）时回退到最近交易日
 
 ```mermaid
 flowchart TD
-Start(["请求进入 FundController"]) --> CheckPath["解析路径参数 code"]
-CheckPath --> Action{"请求方法与路径"}
-Action --> |GET /search| DoSearch["调用 FundService.search(keyword)"]
-Action --> |GET /{code}| DoDetail["调用 FundService.getDetail(code)"]
-Action --> |GET /{code}/nav-history| DoNav["调用 FundService.getNavHistory(code, period)"]
-Action --> |GET /{code}/estimates| DoEst["调用 FundService.getMultiSourceEstimates(code)"]
-Action --> |POST /{code}/refresh| DoRefresh["调用 FundService.refreshFundData(code)"]
-DoSearch --> Wrap["Result.success(...)"]
-DoDetail --> DetailCheck{"detail 是否为空"}
-DetailCheck --> |是| Return404["Result.error(404)"]
-DetailCheck --> |否| Wrap
-DoNav --> Wrap
-DoEst --> Wrap
-DoRefresh --> Wrap
-Wrap --> End(["返回响应"])
-Return404 --> End
+Start(["获取基金数据"]) --> CheckCache["检查缓存"]
+CheckCache --> CacheHit{"缓存命中?"}
+CacheHit --> |是| ReturnCache["返回缓存数据"]
+CacheHit --> |否| TryMain["尝试主数据源"]
+TryMain --> MainSuccess{"主数据源成功?"}
+MainSuccess --> |是| ProcessData["处理数据并持久化"]
+MainSuccess --> |否| TryBackup["尝试备用数据源"]
+TryBackup --> BackupSuccess{"备用数据源成功?"}
+BackupSuccess --> |是| ProcessData
+BackupSuccess --> |否| TryStock["使用股票兜底"]
+TryStock --> StockSuccess{"股票兜底成功?"}
+StockSuccess --> |是| ProcessData
+StockSuccess --> |否| ReturnEmpty["返回空数据"]
+ProcessData --> SaveCache["保存到缓存"]
+SaveCache --> ReturnData["返回数据"]
+ReturnCache --> End(["结束"])
+ReturnData --> End
+ReturnEmpty --> End
 ```
 
 **图表来源**
-- [FundController.java:32-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L32-L77)
-- [FundService.java:26-74](file://src/main/java/com/qoder/fund/service/FundService.java#L26-L74)
+- [FundDataAggregator.java:115-146](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L115-L146)
+- [EastMoneyDataSource.java:46-84](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L46-L84)
 
 **章节来源**
-- [FundController.java:24-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L24-L79)
+- [FundDataAggregator.java:36-101](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L101)
+- [FundDataAggregator.java:115-146](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L115-L146)
+- [EastMoneyDataSource.java:25-37](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L25-L37)
 
-### 组件 D：前端路由与主题（App.tsx）
+### 组件 C：CLI 命令行工具（FundCliApplication）
 职责与特性：
-- 定义站点路由，包含 Dashboard、搜索、基金详情、持仓、自选、分析等页面
-- 配置 Ant Design 主题与中文本地化
+- **双模式启动**：支持 Web 模式和 CLI 模式切换
+- **命令分类**：fund、position、watchlist、dashboard、account、sync 命令
+- **AI Agent 友好**：支持简洁模式（--brief）和 JSON 输出（--json）
+- **定时任务集成**：专为外部 Agent 定时任务设计的 dashboard broadcast 命令
+- **数据库连接检查**：启动时自动检查数据库连接状态
+
+```mermaid
+classDiagram
+class FundCliApplication {
++main(args) void
++run(args) void
++checkDatabaseConnection() boolean
+}
+class FundCommand {
++search(keyword) void
++detail(code) void
++nav(code) void
++estimate(code) void
+}
+class PositionCommand {
++list() void
++add() void
++delete(id) void
+}
+class SyncCommand {
++nav() void
++estimate() void
++all() void
+}
+FundCliApplication --> FundCommand : "基金相关命令"
+FundCliApplication --> PositionCommand : "持仓相关命令"
+FundCliApplication --> SyncCommand : "数据同步命令"
+```
+
+**图表来源**
+- [FundCliApplication.java:58-83](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L58-L83)
+- [FundCliApplication.java:135-213](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L135-L213)
+
+**章节来源**
+- [FundCliApplication.java:1-215](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L1-L215)
+
+## AI Agent 协作流程
+AI Agent 在本项目中的协作流程体现了 Harness Engineering 方法论的核心思想：
+
+### 1. 环境初始化
+- 运行 `./scripts/setup-harness.sh` 安装完整的工具链
+- 自动配置 Git hooks、Maven wrapper 和依赖
+- 验证 Checkstyle、AGENTS.md、CI 配置
+
+### 2. 任务执行
+- 遵循"小步快跑"原则，频繁提交并通过预提交钩子检查
+- 使用 CLI 工具进行数据同步和验证
+- 通过 dashboard broadcast 命令获取简洁的资产概览
+
+### 3. 自动化集成
+- 支持 JSON 格式输出，便于外部系统集成
+- 提供 --brief 模式，适合定时任务和监控系统
+- 通过 GitHub Actions 实现自动化测试和部署
 
 ```mermaid
 flowchart TD
-A["App.tsx 启动"] --> B["ConfigProvider 设置主题与语言"]
-B --> C["BrowserRouter 路由容器"]
-C --> D["Routes 定义页面路由"]
-D --> E["/ → Dashboard"]
-D --> F["/search → SearchResult"]
-D --> G["/fund/:code → FundDetail"]
-D --> H["/portfolio → Portfolio"]
-D --> I["/portfolio/add → AddPosition"]
-D --> J["/portfolio/records → TransactionList"]
-D --> K["/watchlist → Watchlist"]
-D --> L["/analysis → ProfitAnalysis"]
+Setup["运行 setup-harness.sh"] --> InstallHooks["安装 Git hooks"]
+InstallHooks --> ConfigCI["配置 CI/CD"]
+ConfigCI --> TestRun["运行测试"]
+TestRun --> CodeReview["代码审查"]
+CodeReview --> Deploy["自动化部署"]
+Deploy --> Monitor["监控系统"]
+Monitor --> Alert["告警通知"]
+Alert --> Setup
 ```
 
-**图表来源**
-- [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
+**章节来源**
+- [setup-harness.sh:1-87](file://scripts/setup-harness.sh#L1-L87)
+- [AGENTS.md:52-68](file://AGENTS.md#L52-L68)
+
+## 自动化部署与 Cron 作业管理
+AI Agent 在自动化部署和 Cron 作业管理中发挥着重要作用：
+
+### Cron 作业策略
+- **净值同步**：交易日 19:30 和 21:30 两次同步，确保数据完整性
+- **估值快照**：A股 14:50，QDII 23:00，确保估值准确性
+- **预测评估**：分三批在 20:00、21:00、22:00 执行，提高评估精度
+- **重仓股同步**：每周一 20:00 执行，保持持仓数据新鲜度
+
+### AI Agent 的新作用
+- **定时任务协调**：通过 CLI 工具的 dashboard broadcast 命令提供简洁的资产概览
+- **数据质量监控**：自动检查数据源可用性和预测准确度
+- **异常处理**：熔断器模式确保外部数据源故障时的系统稳定性
+- **部署自动化**：通过 GitHub Actions 实现端到端的自动化部署流程
+
+### 部署脚本
+- **install-cron.sh**：安装和配置系统级 Cron 作业
+- **setup-harness.sh**：完整的开发环境初始化脚本
+- **CI/CD 工作流**：自动化测试、构建和部署流程
 
 **章节来源**
-- [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
+- [FundDataSyncScheduler.java:224-247](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L224-L247)
+- [FundDataSyncScheduler.java:474-535](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L474-L535)
+- [install-cron.sh](file://scripts/install-cron.sh)
 
 ## 依赖分析
-- 后端依赖
+- **后端依赖**
   - Web 与缓存：spring-boot-starter-web、spring-boot-starter-cache、Caffeine
   - 数据库：MyBatis-Plus、MySQL Connector、HikariCP
   - HTTP 客户端：OkHttp
   - CLI：Picocli + picocli-spring-boot-starter
   - 监控：Actuator
-  - 校验与日志：validation、AOP、Logback
-- 前端依赖
+  - 熔断器：Resilience4j（通过 CircuitBreaker 实现）
+- **前端依赖**
   - React 18、Ant Design 5、ECharts、Zustand、React Router、Axios
+- **Harness Engineering 依赖**
+  - Git hooks、Maven wrapper、Checkstyle、ESLint
+  - GitHub Actions、Docker（可选）
 
 ```mermaid
 graph LR
@@ -294,9 +376,7 @@ POM --> CACHE["spring-boot-starter-cache + Caffeine"]
 POM --> OKHTTP["okhttp 4.12.0"]
 POM --> PICOC["picocli + picocli-spring-boot-starter"]
 POM --> ACT["spring-boot-starter-actuator"]
-POM --> AOP["spring-boot-starter-aop"]
-POM --> JACK["jackson-databind + jsr310"]
-POM --> LOMBOK["lombok"]
+POM --> CB["resilience4j-circuitbreaker"]
 POM --> TEST["spring-boot-starter-test + h2"]
 FE_PKG["package.json 依赖"] --> REACT["react 18"]
 FE_PKG --> TS["typescript"]
@@ -310,60 +390,68 @@ FE_PKG --> AXIOS["axios"]
 
 **图表来源**
 - [pom.xml:20-116](file://pom.xml#L20-L116)
-- [README.md:76-87](file://README.md#L76-L87)
+- [EastMoneyDataSource.java:5-37](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L5-L37)
 
 **章节来源**
 - [pom.xml:20-116](file://pom.xml#L20-L116)
 - [README.md:76-87](file://README.md#L76-L87)
 
 ## 性能考虑
-- 缓存策略
+- **缓存策略**
   - 使用 Caffeine 本地缓存，缓存键按资源粒度划分，避免缓存穿透与雪崩
   - 对搜索、详情、净值历史、估值分别设置缓存，结合定时任务与手动刷新
-- 数据源降级与兜底
-  - 多数据源轮询与兜底策略减少单点故障影响
-  - 智能权重与准确度修正提升估值可信度
-- 定时任务与批量处理
-  - 批量预同步当日净值，避免高频请求触发限流
-- 前端性能
+- **熔断器模式**
+  - 外部数据源故障时自动降级，确保系统稳定性
+  - 通过 CircuitBreaker 实现智能熔断和恢复
+- **定时任务优化**
+  - 分批次执行确保系统负载均衡
+  - QDII 和 A股基金差异化处理，提高数据准确性
+- **前端性能**
   - ECharts 图表按需渲染，路由懒加载，主题与组件样式统一
 
-[本节为通用性能建议，不直接分析具体文件]
-
 ## 故障排查指南
-- 后端常见问题
-  - 数据源不可用：检查多数据源降级逻辑与兜底估值是否生效
-  - 缓存异常：清理指定缓存键后重试，确认缓存配置与键生成规则
-  - 定时任务失败：查看 Actuator 指标与日志，确认任务调度与数据库连接
-  - CLI 命令异常：确认打包模式与主类配置，检查命令参数与返回值
-- 前端常见问题
-  - 路由不生效：检查 App.tsx 路由配置与页面组件导出
-  - 图表渲染异常：确认数据格式与 ECharts 配置，检查网络请求与接口返回
-- 数据库问题
-  - 连接池异常：检查 HikariCP 参数与数据库状态
-  - 表结构不一致：核对 schema.sql 与实际表结构，必要时执行迁移
+- **Harness Engineering 相关**
+  - 工具链安装失败：检查 setup-harness.sh 权限和依赖
+  - Git hooks 未执行：确认 .git/hooks/pre-commit 权限
+  - CI/CD 失败：检查 .github/workflows/ci.yml 配置
+- **定时任务相关**
+  - 任务未执行：检查 Cron 表达式和系统时间
+  - 数据同步失败：查看日志中的熔断器状态
+  - 预测评估异常：确认净值数据是否已发布
+- **CLI 工具相关**
+  - 数据库连接失败：检查环境变量和连接配置
+  - 命令执行异常：使用 --debug 模式获取详细日志
+  - JSON 输出问题：确认 --json 参数使用正确
 
 **章节来源**
-- [application.yml:12-22](file://src/main/resources/application.yml#L12-L22)
-- [application.yml:56-68](file://src/main/resources/application.yml#L56-L68)
-- [FundDataAggregator.java:343-352](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L343-L352)
-- [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
-- [schema.sql:1-96](file://src/main/resources/db/schema.sql#L1-L96)
+- [setup-harness.sh:16-30](file://scripts/setup-harness.sh#L16-L30)
+- [FundDataSyncScheduler.java:56-75](file://src/main/java/com/qoder/fund/scheduler/FundDataSyncScheduler.java#L56-L75)
+- [FundCliApplication.java:123-130](file://src/main/java/com/qoder/fund/cli/FundCliApplication.java#L123-L130)
 
 ## 结论
-本项目通过明确的分层架构、多数据源聚合与智能权重策略、完善的缓存与定时任务机制，实现了稳定高效的基金数据聚合与展示能力。Agent 在维护过程中应重点关注数据源可用性、缓存一致性、定时任务稳定性与 CLI 命令的健壮性，确保系统在复杂外部环境下仍能提供高质量的数据服务。
+本项目通过 Harness Engineering 方法论的应用，实现了标准化的工具链、自动化的流程和完善的质量保证机制。AI Agent 在维护过程中应重点关注：
+- Harness Engineering 工具链的正确配置和使用
+- 定时任务调度系统的稳定性和数据准确性
+- 多数据源聚合器的熔断器模式和降级策略
+- CLI 工具在自动化部署和监控中的新作用
+- Cron 作业管理的最佳实践和故障排查方法
+
+这些改进确保了系统在复杂外部环境下仍能提供高质量的数据服务，同时为 AI Agent 的自动化协作提供了坚实的基础。
 
 ## 附录
-- 维护检查清单（AI 完成任务后执行）
-  - 是否新增了模块/功能？→ 更新 AGENTS.md
-  - 是否完成了重要功能？→ 更新 PROGRESS.md
-  - 是否做了技术选型/架构决策？→ 创建 ADR
-  - 是否需要调整代码规范？→ 建议更新 checkstyle/ESLint
-- 任务与协作流程
-  - 阅读任务清单与技术规范，确认需求范围
-  - 遵循“小步快跑”，频繁提交并通过测试
-  - 完成验证后更新任务清单与文档
+- **Harness Engineering 维护检查清单**
+  - 是否正确安装和配置了工具链？→ 运行 setup-harness.sh
+  - Git hooks 是否正常工作？→ 执行预提交测试
+  - CI/CD 工作流是否通过？→ 检查 GitHub Actions 状态
+  - 定时任务是否按时执行？→ 验证 Cron 作业日志
+  - CLI 工具是否可用？→ 测试 dashboard broadcast 命令
+- **AI Agent 协作最佳实践**
+  - 使用 JSON 输出格式便于自动化集成
+  - 通过 --brief 模式获取简洁的资产概览
+  - 定期检查熔断器状态和数据源可用性
+  - 利用定时任务进行数据质量监控
 
 **章节来源**
 - [AGENTS.md:127-132](file://AGENTS.md#L127-L132)
 - [PROGRESS.md:95-128](file://PROGRESS.md#L95-L128)
+- [adr-001-tech-stack.md:1-53](file://docs/architecture/adr-001-tech-stack.md#L1-L53)

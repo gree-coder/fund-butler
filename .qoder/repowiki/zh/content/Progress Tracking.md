@@ -10,14 +10,25 @@
 - [DashboardService.java](file://src/main/java/com/qoder/fund/service/DashboardService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EstimateAnalysisService.java](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java)
+- [EstimateWeightService.java](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java)
+- [FundEstimateCalculator.java](file://src/main/java/com/qoder/fund/service/FundEstimateCalculator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
 - [SinaDataSource.java](file://src/main/java/com/qoder/fund/datasource/SinaDataSource.java)
+- [TencentDataSource.java](file://src/main/java/com/qoder/fund/datasource/TencentDataSource.java)
 - [FundNav.java](file://src/main/java/com/qoder/fund/entity/FundNav.java)
 - [FundNavMapper.java](file://src/main/java/com/qoder/fund/mapper/FundNavMapper.java)
 - [ProfitAnalysisDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitAnalysisDTO.java)
 - [App.tsx](file://fund-web/src/App.tsx)
 - [Analysis/index.tsx](file://fund-web/src/pages/Analysis/index.tsx)
+- [EstimateAnalysisTab.tsx](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 移除了腾讯数据源相关的内容，反映其已被完全移除
+- 更新了智能权重计算算法的描述，移除了腾讯数据源的影响
+- 更新了前端数据源标签系统，移除了腾讯数据源的显示
+- 更新了架构图和组件分析，反映数据源结构的变化
 
 ## 目录
 1. [简介](#简介)
@@ -32,7 +43,9 @@
 10. [附录](#附录)
 
 ## 简介
-本文件基于仓库中的进度跟踪文档与系统实现，对“基金管家”项目的开发进度、架构设计与核心功能进行系统化梳理。重点围绕收益分析与数据聚合两大模块，结合后端服务、前端页面与数据模型，形成可读性强、便于协作的进度跟踪文档。
+本文件基于仓库中的进度跟踪文档与系统实现，对"基金管家"项目的开发进度、架构设计与核心功能进行系统化梳理。重点围绕收益分析与数据聚合两大模块，结合后端服务、前端页面与数据模型，形成可读性强、便于协作的进度跟踪文档。
+
+**更新** 本版本反映了移除失效腾讯数据源的重大变更，该变更影响了智能权重计算算法和前端数据源标签系统。
 
 ## 项目结构
 项目采用前后端分离架构：
@@ -45,6 +58,7 @@ graph TB
 subgraph "前端"
 FE_App["App.tsx<br/>路由与主题"]
 FE_Analysis["Analysis/index.tsx<br/>收益分析页面"]
+FE_Estimate["EstimateAnalysisTab.tsx<br/>估值分析页面"]
 end
 subgraph "后端"
 BE_Controller["DashboardController<br/>收益分析API"]
@@ -56,7 +70,9 @@ BE_DB[("数据库<br/>MySQL")]
 BE_Cache["Caffeine 缓存"]
 end
 FE_App --> FE_Analysis
+FE_App --> FE_Estimate
 FE_Analysis --> BE_Controller
+FE_Estimate --> BE_Controller
 BE_Controller --> BE_Service
 BE_Service --> BE_Aggregator
 BE_Aggregator --> BE_East
@@ -68,6 +84,7 @@ BE_Aggregator --> BE_Cache
 **图表来源**
 - [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
 - [Analysis/index.tsx:10-320](file://fund-web/src/pages/Analysis/index.tsx#L10-L320)
+- [EstimateAnalysisTab.tsx:1-200](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L200)
 - [DashboardController.java:11-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L11-L36)
 - [DashboardService.java:30-609](file://src/main/java/com/qoder/fund/service/DashboardService.java#L30-L609)
 - [FundDataAggregator.java:40-712](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L40-L712)
@@ -80,6 +97,7 @@ BE_Aggregator --> BE_Cache
 - [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
 - [App.tsx:45-67](file://fund-web/src/App.tsx#L45-L67)
 - [Analysis/index.tsx:10-320](file://fund-web/src/pages/Analysis/index.tsx#L10-L320)
+- [EstimateAnalysisTab.tsx:1-200](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L200)
 
 ## 核心组件
 - 收益分析API与服务
@@ -91,6 +109,10 @@ BE_Aggregator --> BE_Cache
 - 前端收益分析页面
   - 使用React Query拉取收益分析数据，ECharts渲染收益曲线、回撤与每日收益柱状图
   - 展示总收益、年化收益、最大回撤、夏普比率、胜率、波动率等指标卡片
+- 估值分析组件
+  - 提供多数据源对比、智能加权计算、准确度统计和补偿记录展示
+
+**更新** 移除了腾讯数据源相关内容，更新了智能权重计算和前端数据源标签系统。
 
 **章节来源**
 - [DashboardController.java:11-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L11-L36)
@@ -99,6 +121,7 @@ BE_Aggregator --> BE_Cache
 - [EastMoneyDataSource.java:23-800](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L23-L800)
 - [SinaDataSource.java:19-119](file://src/main/java/com/qoder/fund/datasource/SinaDataSource.java#L19-L119)
 - [Analysis/index.tsx:10-320](file://fund-web/src/pages/Analysis/index.tsx#L10-L320)
+- [EstimateAnalysisTab.tsx:1-200](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L200)
 
 ## 架构总览
 收益分析模块的关键流程如下：
@@ -191,11 +214,13 @@ Metrics --> End(["返回 DTO"])
   - 搜索与详情缓存：减少重复请求
   - 实时估值多源融合：主源（天天基金）→备选（新浪财经）→兜底（股票估算）
   - 智能权重：基于基金类型与历史准确度动态调整权重
-  - 预同步净值：批量预写入今日净值，提升“实际净值”可用性
+  - 预同步净值：批量预写入今日净值，提升"实际净值"可用性
 - 关键特性
   - 缓存：Caffeine + Spring Cache注解
   - 熔断：CircuitBreaker保障接口稳定性
   - 准确度修正：基于estimate_prediction表的历史MAE计算权重修正乘数
+
+**更新** 移除了腾讯数据源，更新了数据源顺序和权重配置。
 
 ```mermaid
 classDiagram
@@ -240,35 +265,97 @@ FundDataAggregator --> FundNav : "查询/写入净值"
 - [FundDataAggregator.java:36-712](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L36-L712)
 - [application.yml:29-36](file://src/main/resources/application.yml#L29-L36)
 
-### 前端收益分析页面（Analysis/index.tsx）
+### 智能权重计算服务（EstimateWeightService）
 - 功能职责
-  - 通过React Query拉取收益分析数据，设置缓存与过期策略
-  - 使用ECharts渲染收益曲线、回撤曲线与每日收益柱状图
-  - 展示关键指标卡片：总收益率、年化收益、最大回撤、夏普比率、胜率、波动率
-- 交互与体验
-  - 支持切换近30/60/90天窗口
-  - 加载态骨架屏，空数据友好提示
+  - 自适应权重计算：根据基金类型、股票数据源类型和持仓覆盖率确定基础权重
+  - 历史准确度修正：基于最近3个交易日的MAE计算修正乘数
+  - 权重归一化：确保权重总和为1
+  - 冷启动保护：新基金前5个交易日使用保守权重策略
+- 关键算法
+  - 场景权重配置：ETF实时、固收类、QDII、权益高/中/低覆盖场景
+  - 准确度修正：multiplier = 1 / (1 + MAE)
+  - 权重归一化：finalWeight = baseWeight × multiplier / Σ(baseWeight × multiplier)
+
+**更新** 移除了腾讯数据源的影响，更新了权重计算逻辑。
 
 ```mermaid
-sequenceDiagram
-participant Page as "Analysis 页面"
-participant Query as "React Query"
-participant API as "DashboardController"
-participant Chart as "ECharts"
-Page->>Query : useQuery(['profitAnalysis', days])
-Query->>API : GET /api/dashboard/profit-analysis
-API-->>Query : ProfitAnalysisDTO
-Query-->>Page : data
-Page->>Chart : 渲染收益曲线/回撤/柱状图
-Page->>Page : 渲染指标卡片
+flowchart TD
+Start(["开始权重计算"]) --> CheckType["检查基金类型"]
+CheckType --> CheckStockSource{"股票数据源类型"}
+CheckStockSource --> |etf_realtime| ETFScene["ETF实时场景"]
+CheckStockSource --> |BOND/MONEY| BondScene["固收类场景"]
+CheckStockSource --> |QDII| QDIIScene["QDII场景"]
+CheckStockSource --> |其他| EquityScene["权益类场景"]
+ETFScene --> GetETFWeights["获取ETF权重配置"]
+BondScene --> GetBondWeights["获取固收权重配置"]
+QDIIScene --> GetQDIIBaseWeights["获取QDII基础权重"]
+EquityScene --> CheckCoverage{"检查持仓覆盖率"}
+CheckCoverage --> |≥60%| HighCoverage["高覆盖场景"]
+CheckCoverage --> |≥30%| MediumCoverage["中覆盖场景"]
+CheckCoverage --> |<30%| LowCoverage["低覆盖场景"]
+HighCoverage --> GetHighWeights["获取高覆盖权重"]
+MediumCoverage --> GetMedWeights["获取中覆盖权重"]
+LowCoverage --> GetLowWeights["获取低覆盖权重"]
+GetETFWeights --> CalcBaseWeights["计算基础权重"]
+GetBondWeights --> CalcBaseWeights
+GetQDIIBaseWeights --> CalcBaseWeights
+GetHighWeights --> CalcBaseWeights
+GetMedWeights --> CalcBaseWeights
+GetLowWeights --> CalcBaseWeights
+CalcBaseWeights --> CheckHistory{"检查历史数据"}
+CheckHistory --> |≥3天| ApplyCorrection["应用准确度修正"]
+CheckHistory --> |<3天| ColdStart["冷启动保护"]
+ApplyCorrection --> Normalize["权重归一化"]
+ColdStart --> Conservative["保守权重"]
+Normalize --> End(["返回最终权重"])
+Conservative --> End
 ```
 
 **图表来源**
-- [Analysis/index.tsx:13-17](file://fund-web/src/pages/Analysis/index.tsx#L13-L17)
-- [DashboardController.java:31-34](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L31-L34)
+- [EstimateWeightService.java:25-122](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L25-L122)
+- [EstimateWeightService.java:197-283](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L197-L283)
 
 **章节来源**
-- [Analysis/index.tsx:10-320](file://fund-web/src/pages/Analysis/index.tsx#L10-L320)
+- [EstimateWeightService.java:14-340](file://src/main/java/com/qoder/fund/service/EstimateWeightService.java#L14-L340)
+
+### 前端估值分析页面（EstimateAnalysisTab.tsx）
+- 功能职责
+  - 展示多数据源对比：天天基金、新浪财经、重仓股估算、智能综合预估
+  - 显示当前权重和可信度：基于历史准确度计算的权重百分比
+  - 提供准确度统计：平均误差、命中率、趋势分析
+  - 展示补偿记录：实际净值和预测补偿的时间线
+- 用户界面
+  - 数据源对比表格：净值、涨幅、状态、权重、可信度、说明
+  - 准确度统计表格：星级评级、平均误差、命中率、趋势
+  - 补偿记录表格：日期、类型、说明
+
+**更新** 移除了腾讯数据源的显示，更新了数据源标签系统。
+
+```mermaid
+sequenceDiagram
+participant Page as "估值分析页面"
+participant API as "后端API"
+participant SVC as "服务层"
+participant AGG as "数据聚合层"
+Page->>API : 获取估值分析数据
+API->>SVC : getEstimateAnalysis(fundCode)
+SVC->>AGG : 获取多源估值数据
+AGG->>AGG : 组装数据源列表
+AGG->>AGG : 计算智能加权
+AGG->>SVC : 返回分析结果
+SVC-->>API : 返回DTO
+API-->>Page : 返回JSON
+Page->>Page : 渲染数据源对比表格
+Page->>Page : 渲染准确度统计
+Page->>Page : 渲染补偿记录
+```
+
+**图表来源**
+- [EstimateAnalysisTab.tsx:37-200](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L37-L200)
+- [FundDataAggregator.java:236-341](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L236-L341)
+
+**章节来源**
+- [EstimateAnalysisTab.tsx:1-366](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L366)
 
 ## 依赖关系分析
 - 后端依赖
@@ -295,7 +382,7 @@ API --> ACT["Actuator 监控"]
 **图表来源**
 - [application.yml:29-68](file://src/main/resources/application.yml#L29-L68)
 - [EastMoneyDataSource.java:29-37](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L29-L37)
-- [Analysis/index.tsx:5-7](file://fund-web/src/pages/Analysis/index.tsx#L5-L7)
+- [EstimateAnalysisTab.tsx:1-200](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L200)
 
 **章节来源**
 - [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
@@ -306,12 +393,10 @@ API --> ACT["Actuator 监控"]
   - 缓存键设计：按资源维度（搜索、详情、净值历史、估值）隔离，避免污染
 - 数据聚合
   - 批量查询：按基金代码批量获取净值，减少网络往返
-  - 预同步：批量预写入今日净值，提升“实际净值”可用性
+  - 预同步：批量预写入今日净值，提升"实际净值"可用性
 - 前端性能
   - React Query缓存与过期策略，避免频繁请求
   - ECharts按需渲染，减少DOM压力
-
-[本节为通用指导，无需特定文件引用]
 
 ## 故障排查指南
 - 数据源不可用
@@ -326,6 +411,12 @@ API --> ACT["Actuator 监控"]
   - 现象：收益分析页面空白或加载态
   - 排查：确认API返回数据结构一致；检查React Query缓存键与过期时间
   - 参考：前端页面的数据获取与空状态处理
+- 权重计算异常
+  - 现象：智能加权结果不准确或为空
+  - 排查：检查EstimateWeightService的权重配置；确认历史准确度数据存在
+  - 参考：权重计算逻辑和准确度修正算法
+
+**更新** 移除了腾讯数据源相关的故障排查内容。
 
 **章节来源**
 - [EastMoneyDataSource.java:46-84](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java#L46-L84)
@@ -338,15 +429,16 @@ API --> ACT["Actuator 监控"]
 - 项目已完成收益分析核心功能：收益曲线、回撤分析、指标计算与可视化展示
 - 后端通过多数据源聚合与缓存策略，提升了数据可用性与稳定性
 - 前端通过图表与指标卡片，提供了直观的投资收益洞察
+- 智能权重计算系统已优化，移除了失效数据源的影响，提升了准确性
 - 后续可进一步完善单元测试、数据可视化优化与功能增强（如排行榜、筛选器）
 
-[本节为总结性内容，无需特定文件引用]
+**更新** 反映了移除腾讯数据源后的系统优化成果。
 
 ## 附录
 
 ### 进度与里程碑
 - 进度概览：MVP阶段80%，后端85%，前端80%，CLI 90%
-- 已完成：收益分析API、收益分析页面、日志系统、CLI命令行工具、多数据源适配
+- 已完成：收益分析API、收益分析页面、日志系统、CLI命令行工具、多数据源适配、智能权重计算优化
 - 进行中：定时数据同步优化、单元测试覆盖
 - 待开始：基金筛选器、排行榜、收益归因分析、周报/月报、批量导入
 
@@ -354,8 +446,11 @@ API --> ACT["Actuator 监控"]
 - [PROGRESS.md:8-128](file://PROGRESS.md#L8-L128)
 
 ### 产品需求与功能映射
-- 收益分析页面对应PRD中的“收益分析”模块，涵盖收益曲线、回撤分析、指标卡片与报告导出能力
+- 收益分析页面对应PRD中的"收益分析"模块，涵盖收益曲线、回撤分析、指标卡片与报告导出能力
+- 估值分析页面对应PRD中的"估值分析"模块，提供多数据源对比和智能加权计算
 - 与PRD的功能优先级（P0/P1）保持一致，确保MVP快速交付
+
+**更新** 新增了估值分析页面的功能映射。
 
 **章节来源**
 - [PRD.md:190-245](file://PRD.md#L190-L245)

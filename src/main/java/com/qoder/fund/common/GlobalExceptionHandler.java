@@ -8,12 +8,19 @@ import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public Result<?> handleNoResourceFound(NoResourceFoundException e, HttpServletRequest request) {
+        log.warn("[{}] 资源不存在: {}", getRequestPath(request), e.getMessage());
+        return Result.error(404, "接口不存在: " + request.getRequestURI());
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public Result<?> handleIllegalArgument(IllegalArgumentException e, HttpServletRequest request) {
