@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Col, Row, Tag, Table, Descriptions, Segmented, Button, Space, Tooltip, Dropdown, message, Tabs } from 'antd';
-import { StarOutlined, StarFilled, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { StarOutlined, StarFilled, PlusOutlined, InfoCircleOutlined, DownOutlined, ReloadOutlined, RobotOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { fundApi, type FundDetail as FundDetailType, type EstimateItem } from '../../api/fund';
 import { watchlistApi } from '../../api/watchlist';
@@ -9,6 +10,7 @@ import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType,
 import PriceChange from '../../components/PriceChange';
 import PageSkeleton from '../../components/PageSkeleton';
 import { EstimateAnalysisTab } from './EstimateAnalysisTab';
+import AiDiagnosisTab from './AiDiagnosisTab';
 
 const PERIODS = [
   { label: '近1月', value: '1m' },
@@ -202,10 +204,31 @@ const FundDetail: React.FC = () => {
 
         {/* NAV Info Grid */}
         <div className="fund-nav-grid">
+          {/* 最新净值 - 根据 QDII 延迟情况动态显示 */}
           <div>
-            <div className="fund-stat-label">最新净值</div>
-            <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatNav(detail.latestNav)}</div>
-            <div className="fund-secondary">{detail.latestNavDate}</div>
+            <div className="fund-stat-label">
+              {actualSource?.delayed ? (
+                <>
+                  <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>T+1</Tag>
+                  最新净值
+                </>
+              ) : '最新净值'}
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {formatNav(actualSource?.estimateNav ?? detail.latestNav)}
+            </div>
+            <div className="fund-secondary">
+              {actualSource?.delayed ? (
+                <Tooltip title="QDII基金净值延迟一天公布，显示的是前一交易日数据">
+                  <span style={{ color: '#faad14' }}>{actualSource.delayedDate} (延迟)</span>
+                </Tooltip>
+              ) : detail.latestNavDate}
+            </div>
+            {actualSource && (
+              <div style={{ marginTop: 4 }}>
+                <PriceChange value={actualSource.estimateReturn} showBg />
+              </div>
+            )}
           </div>
           <div>
             <div className="fund-stat-label">
@@ -252,18 +275,10 @@ const FundDetail: React.FC = () => {
               {formatNav(activeEstimate?.estimateNav ?? detail.estimateNav)}
             </div>
             <PriceChange value={activeEstimate?.estimateReturn ?? detail.estimateReturn} showBg />
-          </div>
-          {actualSource && (
-            <div>
-              <div className="fund-stat-label">
-                <Tag color="gold" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{actualSource.delayed ? '实际 T+1' : '实际'}</Tag> {actualSource.delayed ? '最新净值' : '今日净值'}
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 600, color: getProfitColor(actualSource.estimateReturn), fontVariantNumeric: 'tabular-nums' }}>
-                {formatNav(actualSource.estimateNav)}
-              </div>
-              <PriceChange value={actualSource.estimateReturn} showBg />
+            <div className="fund-secondary" style={{ marginTop: 4 }}>
+              今日预估 ({dayjs().format('MM月DD日')})
             </div>
-          )}
+          </div>
         </div>
       </Card>
 
@@ -357,6 +372,16 @@ const FundDetail: React.FC = () => {
             key: 'estimate-analysis',
             label: '数据源分析',
             children: <EstimateAnalysisTab fundCode={code!} />,
+          },
+          {
+            key: 'ai-diagnosis',
+            label: (
+              <span>
+                <RobotOutlined style={{ marginRight: 4 }} />
+                AI 诊断
+              </span>
+            ),
+            children: <AiDiagnosisTab fundCode={code!} />,
           },
         ]}
       />

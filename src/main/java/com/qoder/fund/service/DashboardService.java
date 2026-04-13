@@ -13,6 +13,7 @@ import com.qoder.fund.mapper.PositionMapper;
 import com.qoder.fund.mapper.TransactionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -37,8 +38,15 @@ public class DashboardService {
     private final FundNavMapper fundNavMapper;
     private final TransactionMapper transactionMapper;
 
+    /**
+     * 获取Dashboard数据（带缓存，5分钟）
+     */
+    @Cacheable(value = "dashboard", key = "'main'")
     public DashboardDTO getDashboard() {
+        long startTime = System.currentTimeMillis();
         List<PositionDTO> positions = positionService.list(null);
+        log.info("Dashboard数据加载完成，持仓数量: {}, 耗时: {}ms",
+                positions.size(), System.currentTimeMillis() - startTime);
 
         DashboardDTO dto = new DashboardDTO();
         dto.setPositions(positions);
@@ -156,11 +164,17 @@ public class DashboardService {
         return dto;
     }
 
+    /**
+     * 获取收益趋势（带缓存）
+     */
+    @Cacheable(value = "profitTrend", key = "#days")
     public ProfitTrendDTO getProfitTrend(int days) {
+        long startTime = System.currentTimeMillis();
         ProfitTrendDTO dto = new ProfitTrendDTO();
 
         // 复用 getProfitAnalysis 的计算逻辑
         ProfitAnalysisDTO analysis = getProfitAnalysis(days);
+        log.info("收益趋势计算完成，天数: {}, 耗时: {}ms", days, System.currentTimeMillis() - startTime);
 
         if (analysis.getDates() != null && analysis.getCumulativeProfits() != null) {
             dto.setDates(analysis.getDates());
@@ -178,7 +192,9 @@ public class DashboardService {
      * 获取收益分析数据（收益曲线+回撤分析）
      * 修复：正确计算历史收益，考虑交易记录
      */
+    @Cacheable(value = "profitAnalysis", key = "#days")
     public ProfitAnalysisDTO getProfitAnalysis(int days) {
+        long startTime = System.currentTimeMillis();
         ProfitAnalysisDTO dto = new ProfitAnalysisDTO();
 
         // 1. 获取所有持仓

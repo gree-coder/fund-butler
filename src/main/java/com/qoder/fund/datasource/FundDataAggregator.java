@@ -441,6 +441,10 @@ public class FundDataAggregator {
     /**
      * 获取最近一个交易日的实际净值（用于QDII等净值延迟发布的基金）
      * 当今日净值不可用时，返回数据库中最新一条记录
+     * 
+     * 延迟判断逻辑：
+     * - QDII基金：净值延迟公布（T+1或T+2），根据实际差距判断延迟天数
+     * - 工作日计算：考虑周末跳过
      */
     public EstimateSourceDTO.EstimateItem getLatestActualSource(String fundCode) {
         try {
@@ -454,15 +458,55 @@ public class FundDataAggregator {
             if (navs.isEmpty()) return null;
 
             FundNav latest = navs.get(0);
+            LocalDate today = LocalDate.now();
+            LocalDate navDate = latest.getNavDate();
+            
+            // 计算工作日差距（跳过周末）
+            int workdayDiff = 0;
+            LocalDate checkDate = navDate;
+            while (checkDate.isBefore(today)) {
+                checkDate = checkDate.plusDays(1);
+                DayOfWeek dow = checkDate.getDayOfWeek();
+                if (dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY) {
+                    workdayDiff++;
+                }
+            }
+            
+            // 延迟天数：工作日差距 - 1（正常T+1）
+            // workdayDiff=1 表示昨天的净值，这是正常的T+1
+            // workdayDiff=2 表示前天的净值，这是T+2
+            int delayDays = workdayDiff - 1;
+            
+            // 周末特殊处理
+            DayOfWeek todayDow = today.getDayOfWeek();
+            boolean isWeekend = todayDow == DayOfWeek.SATURDAY || todayDow == DayOfWeek.SUNDAY;
+            
             EstimateSourceDTO.EstimateItem item = new EstimateSourceDTO.EstimateItem();
             item.setKey("actual");
-            item.setLabel("最新实际净值 (" + latest.getNavDate() + ")");
-            item.setDescription("净值发布存在延迟，展示最近交易日数据");
+            item.setLabel("最新实际净值 (" + navDate + ")");
+            
+            if (isWeekend) {
+                // 周末不显示延迟
+                item.setDescription("QDII基金净值延迟公布");
+                item.setDelayed(false);
+            } else if (delayDays <= 0) {
+                // 正常情况（T+1）
+                item.setDescription("QDII基金T+1公布净值，展示前一交易日数据");
+                item.setDelayed(false);
+            } else if (delayDays == 1) {
+                // T+2 延迟
+                item.setDescription("QDII基金T+2公布净值（海外市场时差）");
+                item.setDelayed(false);
+            } else {
+                // 真正延迟（超过预期）
+                item.setDescription("净值发布存在延迟，展示最近交易日数据");
+                item.setDelayed(true);
+            }
+            
             item.setEstimateNav(latest.getNav());
             item.setEstimateReturn(latest.getDailyReturn());
             item.setAvailable(true);
-            item.setDelayed(true);
-            item.setDelayedDate(latest.getNavDate());  // 设置延迟数据对应的日期
+            item.setDelayedDate(navDate);
             return item;
         } catch (Exception e) {
             log.warn("获取最近实际净值失败: {}", fundCode, e);
@@ -617,6 +661,20 @@ public class FundDataAggregator {
             normalizedWeights.put(entry.getKey(), w.divide(totalWeight, 4, RoundingMode.HALF_UP));
         }
         smartItem.setWeights(normalizedWeights);
+
+        // 保存基础权重（用于前端展示权重变化）
+        // 使用基础权重的总和进行归一化
+        BigDecimal baseTotalWeight = BigDecimal.ZERO;
+        for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
+            BigDecimal w = baseWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            baseTotalWeight = baseTotalWeight.add(w);
+        }
+        Map<String, BigDecimal> normalizedBaseWeights = new LinkedHashMap<>();
+        for (Map.Entry<String, EstimateSourceDTO.EstimateItem> entry : availableSources.entrySet()) {
+            BigDecimal w = baseWeights.getOrDefault(entry.getKey(), new BigDecimal("0.25"));
+            normalizedBaseWeights.put(entry.getKey(), w.divide(baseTotalWeight, 4, RoundingMode.HALF_UP));
+        }
+        smartItem.setBaseWeights(normalizedBaseWeights);
     }
 
     /**

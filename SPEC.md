@@ -15,7 +15,7 @@
 | 图表库 | ECharts 5 | 金融图表支持完善，交互能力强 |
 | 状态管理 | Zustand | 轻量级，API简洁 |
 | HTTP 客户端 | Axios | 请求拦截、错误处理 |
-| 后端框架 | Spring Boot 4.0.3 (Java 17) | 基于现有项目 |
+| 后端框架 | Spring Boot 3.4.3 (Java 17) | 基于现有项目 |
 | ORM | MyBatis-Plus | 简化 CRUD，代码生成 |
 | 数据库 | MySQL 8.0 | 关系型数据存储 |
 | 缓存 | Caffeine (本地缓存) | MVP阶段无需Redis，本地缓存即可 |
@@ -512,7 +512,36 @@ CREATE TABLE watchlist (
 
 ---
 
-## 六、外部数据采集策略
+## 5.6 AI 数据分析 API
+
+#### GET /api/ai/market-overview
+
+市场概览，包含大盘指数、板块涨跌、近期走势、市场情绪分析。
+
+#### GET /api/ai/diagnosis/{code}
+
+基金智能诊断，多维度评分（业绩、风险、估值、稳定性、费率）。
+
+#### GET /api/ai/risk-warning
+
+持仓风险预警，组合级风险评估（集中度、行业分散、估值健康度）。
+
+#### GET /api/ai/rebalance-timing
+
+调仓时机数据，基于历史业绩与实时指标双维度分析。
+
+### CLI AI 命令
+
+| 命令 | 说明 | 输出 |
+|------|------|------|
+| `ai market` | 市场概览（大盘+板块+近期走势） | JSON（剔除主观建议） |
+| `ai diagnose <code>` | 单只基金诊断 | JSON（剔除主观建议） |
+| `ai risk` | 持仓风险分析 | JSON（剔除主观建议） |
+| `ai positions` | 持仓客观指标 | JSON |
+
+> **设计原则**：CLI 仅作为数据供给层，输出客观事实性指标，不输出任何主观建议，决策权交给外部 Agent。
+
+---
 
 ### 6.1 多数据源架构
 
@@ -527,10 +556,17 @@ FundDataAggregator (聚合器)
 ├── 实时估值策略（多源验证）
 │   ├── 数据源A → 直接获取估值
 │   ├── 数据源B → 交叉验证
-│   └── StockEstimateDataSource (兜底)
+│   └── StockEstimateDataSource (兆底)
 │       ├── 获取基金最新持仓(十大重仓股+比例)
 │       ├── 获取各重仓股实时行情
 │       └── 加权计算 → 估算基金涨幅
+│
+├── MarketDataSource (市场数据)
+│   ├── 大盘指数实时行情（新浪财经/东方财富）
+│   └── 大盘近期K线走势（新浪财经 K线 API）
+│
+├── SectorDataSource (板块数据)
+│   └── 板块涨跌排行（东方财富）
 │
 └── 数据一致性校验
     └── 多源结果偏差 > 阈值 → 日志告警

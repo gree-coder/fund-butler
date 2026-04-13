@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Table, Tag, Progress, Tooltip, Empty, Spin, Statistic, Row, Col } from 'antd';
+import { Card, Table, Tag, Progress, Tooltip, Empty, Spin, Pagination } from 'antd';
 import { InfoCircleOutlined, RiseOutlined, FallOutlined, MinusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { estimateAnalysisApi, type EstimateAnalysisData } from '../../api/estimateAnalysis';
@@ -37,6 +37,9 @@ function formatCompensatedAt(time: string | undefined): string {
 export function EstimateAnalysisTab({ fundCode }: Props) {
   const [data, setData] = useState<EstimateAnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
+  // 补偿记录分页状态
+  const [compensationPage, setCompensationPage] = useState(1);
+  const [compensationPageSize, setCompensationPageSize] = useState(10);
 
   useEffect(() => {
     const loadData = async () => {
@@ -105,18 +108,23 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
       ) : '--',
     },
     {
-      title: '可信度',
+      title: (
+        <span>
+          可信度
+          <Tooltip title="基于历史平均误差(MAE)计算，公式: 1/(1+MAE)。MAE越小可信度越高，MAE=0时可信度100%，MAE=0.5%时可信度67%">
+            <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', fontSize: 12 }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'confidence',
       key: 'confidence',
       render: (confidence: number) => confidence !== undefined ? (
-        <Tooltip title={`基于历史准确度计算: ${(confidence * 100).toFixed(0)}%`}>
-          <Progress
-            percent={Math.round(confidence * 100)}
-            size="small"
-            status={confidence > 0.7 ? 'success' : confidence > 0.4 ? 'normal' : 'exception'}
-            style={{ width: 80 }}
-          />
-        </Tooltip>
+        <Progress
+          percent={Math.round(confidence * 100)}
+          size="small"
+          status={confidence > 0.7 ? 'success' : confidence > 0.4 ? 'normal' : 'exception'}
+          style={{ width: 80 }}
+        />
       ) : '--',
     },
     {
@@ -135,19 +143,40 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
       key: 'label',
     },
     {
-      title: '评级',
+      title: (
+        <span>
+          评级
+          <Tooltip title="基于平均误差(MAE)的星级评分：MAE<0.1%=5星，<0.2%=4星，<0.4%=3星，<0.7%=2星，≥0.7%=1星">
+            <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', fontSize: 12 }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'rating',
       key: 'rating',
       render: (rating: number) => '⭐'.repeat(rating),
     },
     {
-      title: '平均误差',
+      title: (
+        <span>
+          平均误差
+          <Tooltip title="Mean Absolute Error (MAE)：历史预测误差绝对值的平均值，越小越好">
+            <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', fontSize: 12 }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'mae',
       key: 'mae',
       render: (mae: number) => `${mae?.toFixed(2) || '--'}%`,
     },
     {
-      title: '命中率',
+      title: (
+        <span>
+          命中率
+          <Tooltip title="预测误差≤0.5%的次数占总预测次数的比例。误差在0.5%以内视为预测命中">
+            <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', fontSize: 12 }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'hitRate',
       key: 'hitRate',
       render: (rate: number) => `${rate?.toFixed(1) || '--'}%`,
@@ -158,7 +187,14 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
       key: 'predictionCount',
     },
     {
-      title: '趋势',
+      title: (
+        <span>
+          趋势
+          <Tooltip title="对比最近7天与前7天的平均误差变化：误差减小表示准确度提升，误差增大表示准确度下降">
+            <InfoCircleOutlined style={{ marginLeft: 4, color: '#999', fontSize: 12 }} />
+          </Tooltip>
+        </span>
+      ),
       dataIndex: 'trend',
       key: 'trend',
       render: (trend: string) => {
@@ -194,7 +230,7 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
       key: 'type',
       render: (type: string) => (
         <Tag color={type === 'ACTUAL' ? 'blue' : 'purple'}>
-          {type === 'ACTUAL' ? '实际净值' : '预测补偿'}
+          {type === 'ACTUAL' ? '实际净值' : '预测数据'}
         </Tag>
       ),
     },
@@ -245,61 +281,18 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
 
   return (
     <div style={{ padding: '16px 0' }}>
-      {/* 实际净值与智能预估 */}
-      {currentEstimates.actualNav && (
-        <Card style={{ marginBottom: 16 }}>
-          <Row gutter={24}>
-            <Col span={8}>
-              <Statistic
-                title={
-                  <span>
-                    今日实际净值
-                    {currentEstimates.actualReturnDelayed && (
-                      <Tooltip title="净值发布存在延迟">
-                        <Tag color="warning" style={{ marginLeft: 8 }}>延迟</Tag>
-                      </Tooltip>
-                    )}
-                  </span>
-                }
-                value={currentEstimates.actualNav}
-                precision={4}
-              />
-            </Col>
-            <Col span={8}>
-              <Statistic
-                title="实际涨幅"
-                valueRender={() => (
-                  <PriceChange value={currentEstimates.actualReturn || 0} />
-                )}
-              />
-            </Col>
-            <Col span={8}>
-              <Statistic
-                title="智能综合预估"
-                value={currentEstimates.smartEstimate?.nav}
-                precision={4}
-                suffix={
-                  currentEstimates.smartEstimate?.accuracyEnhanced && (
-                    <Tooltip title="已应用历史准确度修正">
-                      <Tag color="success" style={{ marginLeft: 8 }}>准确度增强</Tag>
-                    </Tooltip>
-                  )
-                }
-              />
-            </Col>
-          </Row>
-          {currentEstimates.smartEstimate?.description && (
-            <div style={{ marginTop: 8, color: '#666' }}>
-              <InfoCircleOutlined style={{ marginRight: 4 }} />
-              {currentEstimates.smartEstimate.description}
-            </div>
-          )}
-        </Card>
-      )}
-
       {/* 实时数据源对比 */}
       <Card
-        title="实时数据源对比"
+        title={
+          <span>
+            实时数据源对比
+            {currentEstimates.snapshotTime && (
+              <span style={{ fontSize: 14, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                ({dayjs(currentEstimates.snapshotTime).format('MM月DD日 HH:mm')} 快照)
+              </span>
+            )}
+          </span>
+        }
         style={{ marginBottom: 16 }}
         extra={
           <Tooltip title="各数据源实时估值及当前权重">
@@ -314,6 +307,56 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
           pagination={false}
           size="small"
         />
+        {/* 权重变化说明 */}
+        {currentEstimates.smartEstimate?.accuracyEnhanced && 
+         currentEstimates.smartEstimate.baseWeights && 
+         currentEstimates.smartEstimate.weights && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 4 }}>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>
+              {currentEstimates.smartEstimate.scenario}场景权重变化：
+            </div>
+            <div style={{ fontSize: 12, color: '#666' }}>
+              {Object.keys(currentEstimates.smartEstimate.weights).map(key => {
+                const label = key === 'eastmoney' ? '天天基金' : 
+                              key === 'sina' ? '新浪财经' : 
+                              key === 'stock' ? '重仓股' : key;
+                const base = (currentEstimates.smartEstimate.baseWeights?.[key] || 0) * 100;
+                const final = (currentEstimates.smartEstimate.weights?.[key] || 0) * 100;
+                const diff = final - base;
+                const diffStr = diff > 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+                // 权重上涨用红色，下跌用绿色（与基金涨跌颜色风格一致）
+                const diffColor = diff > 0 ? '#f5222d' : diff < 0 ? '#52c41a' : '#666';
+                return (
+                  <span key={key} style={{ marginRight: 16 }}>
+                    {label}: {base.toFixed(1)}% → <span style={{ color: diffColor, fontWeight: 500 }}>{final.toFixed(1)}%</span>
+                    <span style={{ color: diffColor, fontSize: 11 }}>({diffStr}%)</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {!currentEstimates.smartEstimate?.accuracyEnhanced && 
+         currentEstimates.smartEstimate?.baseWeights && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 4 }}>
+            <div style={{ marginBottom: 4, fontWeight: 500 }}>
+              {currentEstimates.smartEstimate.scenario}场景基础权重：
+            </div>
+            <div style={{ fontSize: 12, color: '#666' }}>
+              {Object.keys(currentEstimates.smartEstimate.baseWeights).map(key => {
+                const label = key === 'eastmoney' ? '天天基金' : 
+                              key === 'sina' ? '新浪财经' : 
+                              key === 'stock' ? '重仓股' : key;
+                const base = (currentEstimates.smartEstimate.baseWeights?.[key] || 0) * 100;
+                return (
+                  <span key={key} style={{ marginRight: 16 }}>
+                    {label}: {base.toFixed(1)}%
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* 准确度统计 */}
@@ -349,13 +392,32 @@ export function EstimateAnalysisTab({ fundCode }: Props) {
         }
       >
         {compensationLogs.length > 0 ? (
-          <Table
-            dataSource={compensationLogs}
-            columns={compensationColumns}
-            rowKey="date"
-            pagination={false}
-            size="small"
-          />
+          <>
+            <Table
+              dataSource={compensationLogs.slice(
+                (compensationPage - 1) * compensationPageSize,
+                compensationPage * compensationPageSize
+              )}
+              columns={compensationColumns}
+              rowKey="date"
+              pagination={false}
+              size="small"
+            />
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <Pagination
+                current={compensationPage}
+                pageSize={compensationPageSize}
+                total={compensationLogs.length}
+                showSizeChanger
+                pageSizeOptions={['10', '20']}
+                onChange={(page, pageSize) => {
+                  setCompensationPage(page);
+                  if (pageSize) setCompensationPageSize(pageSize);
+                }}
+                size="small"
+              />
+            </div>
+          </>
         ) : (
           <Empty description="暂无补偿记录" />
         )}

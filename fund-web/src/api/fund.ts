@@ -53,6 +53,7 @@ export interface EstimateItem {
   weights?: Record<string, number> | null;
   accuracyEnhanced?: boolean;
   delayed?: boolean;
+  delayedDate?: string;
 }
 
 export interface EstimateSourceData {
@@ -62,6 +63,51 @@ export interface EstimateSourceData {
 export interface RefreshResult {
   detail: FundDetail;
   estimates: EstimateSourceData;
+}
+
+// AI 基金诊断报告接口
+export interface AiFundDiagnosis {
+  fundCode: string;
+  fundName: string;
+  diagnosisTime: string;
+  overallScore: number;
+  recommendation: 'bullish' | 'neutral' | 'bearish';
+  confidenceLevel: number;
+  summary: string;
+  dimensionScores: {
+    valuation: number;
+    performance: number;
+    risk: number;
+    stability: number;
+    cost: number;
+  };
+  valuation: {
+    status: string;
+    pePercentile: number;
+    pbPercentile: number;
+    description: string;
+  };
+  performance: {
+    shortTerm: string;
+    midTerm: string;
+    longTerm: string;
+    vsBenchmark: string;
+    description: string;
+  };
+  risk: {
+    riskLevel: number;
+    volatility: string;
+    maxDrawdown: string;
+    description: string;
+  };
+  positionAdvice: {
+    suggestion: string;
+    reason: string;
+    suggestedRatio: number;
+  };
+  riskWarnings: string[];
+  suitableFor: string[];
+  notSuitableFor: string[];
 }
 
 export const fundApi = {
@@ -79,4 +125,8 @@ export const fundApi = {
 
   refreshData: (code: string): Promise<RefreshResult> =>
     client.post(`/fund/${code}/refresh`),
+
+  // AI 诊断接口
+  getAiDiagnosis: (code: string): Promise<AiFundDiagnosis> =>
+    client.get(`/ai/fund/${code}/diagnosis`),
 };

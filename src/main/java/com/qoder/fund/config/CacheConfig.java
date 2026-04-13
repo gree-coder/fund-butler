@@ -44,16 +44,35 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager() {
         return createCacheManager(WARM_EXPIRE_SECONDS, WARM_MAX_SIZE,
-                "fundSearch", "fundDetail", "navHistory", "estimateNav");
+                "fundSearch", "fundDetail", "navHistory", "estimateNav",
+                "dashboard", "profitTrend", "profitAnalysis");
     }
 
     /**
-     * 热数据缓存管理器（用户持仓、自选基金实时估值）
+     * 热数据缓存管理器（用户持仓、自选基金实时估值、AI分析）
      */
     @Bean("hotCacheManager")
     public CacheManager hotCacheManager() {
         return createCacheManager(HOT_EXPIRE_SECONDS, HOT_MAX_SIZE,
                 "positionEstimate", "watchlistEstimate", "multiSourceEstimates");
+    }
+
+    /**
+     * AI分析缓存管理器（调仓建议等，15分钟过期）
+     */
+    @Bean("aiCacheManager")
+    public CacheManager aiCacheManager() {
+        return createCacheManager(900, 200,
+                "aiFundDiagnosis", "rebalanceTiming", "positionRiskWarning");
+    }
+
+    /**
+     * 市场数据缓存管理器（5分钟过期）
+     */
+    @Bean("marketCacheManager")
+    public CacheManager marketCacheManager() {
+        return createCacheManager(300, 100,
+                "marketOverview");
     }
 
     /**

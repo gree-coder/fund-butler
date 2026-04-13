@@ -8,6 +8,9 @@ import { formatAmount, formatPercent, getProfitColor, getFundTypeColor } from '.
 import PriceChange from '../../components/PriceChange';
 import EmptyGuide from '../../components/EmptyGuide';
 import PageSkeleton from '../../components/PageSkeleton';
+import RiskWarningCard from '../../components/RiskWarningCard';
+import RebalanceTimingCard from '../../components/RebalanceTimingCard';
+import MarketOverviewCard from '../../components/MarketOverviewCard';
 import ReactECharts from 'echarts-for-react';
 
 const Dashboard: React.FC = () => {
@@ -18,19 +21,35 @@ const Dashboard: React.FC = () => {
   const { visible, toggle, mask } = useAmountVisible();
   const navigate = useNavigate();
 
+  // 并行加载 Dashboard 数据和收益趋势
   useEffect(() => {
     let mounted = true;
-    dashboardApi.getData()
-      .then((data) => { if (mounted) setData(data); })
-      .catch(() => {})
-      .finally(() => { if (mounted) setLoading(false); });
+    
+    // 并行发起两个请求，减少总体等待时间
+    Promise.all([
+      dashboardApi.getData(),
+      dashboardApi.getProfitTrend(trendDays)
+    ]).then(([dashboardData, trendData]) => {
+      if (mounted) {
+        setData(dashboardData);
+        setTrend(trendData);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (mounted) setLoading(false);
+    });
+    
     return () => { mounted = false; };
   }, []);
 
+  // 趋势天数变化时只重新加载趋势数据
   useEffect(() => {
-    dashboardApi.getProfitTrend(trendDays)
-      .then(setTrend)
-      .catch(() => {});
+    // 避免首次加载时重复请求（已在上面处理）
+    if (trend && trend.dates.length > 0) {
+      dashboardApi.getProfitTrend(trendDays)
+        .then(setTrend)
+        .catch(() => {});
+    }
   }, [trendDays]);
 
   if (loading) return <PageSkeleton type="dashboard" />;
@@ -103,6 +122,19 @@ const Dashboard: React.FC = () => {
           </Col>
         </Row>
       </Card>
+
+      {/* AI智能分析区域 - 三列布局 */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={8}>
+          <MarketOverviewCard />
+        </Col>
+        <Col span={8}>
+          <RiskWarningCard />
+        </Col>
+        <Col span={8}>
+          <RebalanceTimingCard />
+        </Col>
+      </Row>
 
       <Row gutter={16}>
         {/* Position List */}

@@ -15,6 +15,7 @@ export interface CurrentEstimate {
   actualReturnDelayed?: boolean;
   sources: SourceEstimate[];
   smartEstimate: SmartEstimate;
+  snapshotTime?: string;
 }
 
 export interface SourceEstimate {
@@ -35,6 +36,7 @@ export interface SmartEstimate {
   scenario?: string;
   accuracyEnhanced: boolean;
   weights?: Record<string, number>;
+  baseWeights?: Record<string, number>;
   description?: string;
 }
 

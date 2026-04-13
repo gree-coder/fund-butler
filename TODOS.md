@@ -8,76 +8,79 @@
 ## 阶段一：项目基础搭建
 
 ### Task 1.1 - 后端项目依赖配置
-- [ ] `pom.xml` 添加依赖：spring-boot-starter-web、mybatis-plus-spring-boot3-starter、mysql-connector-j、caffeine、lombok、jackson、okhttp（用于外部数据请求）
-- [ ] 配置 `application.yml`：数据源、MyBatis-Plus、缓存、服务端口等
-- [ ] 添加 `WebConfig.java`：CORS 跨域配置（允许前端开发服务器访问）
+- [x] `pom.xml` 添加依赖：spring-boot-starter-web、mybatis-plus-spring-boot3-starter、mysql-connector-j、caffeine、lombok、jackson、okhttp（用于外部数据请求）
+- [x] 配置 `application.yml`：数据源、MyBatis-Plus、缓存、服务端口等
+- [x] 添加 `WebConfig.java`：CORS 跨域配置（允许前端开发服务器访问）
 
 ### Task 1.2 - 数据库初始化
-- [ ] 编写 `schema.sql`：创建 fund、fund_nav、account、position、transaction、watchlist 六张表
-- [ ] 编写 `data.sql`：初始化默认账户数据（支付宝、微信理财通、天天基金等预设账户）
-- [ ] 配置 Spring Boot 启动时自动执行建表脚本
+- [x] 编写 `schema.sql`：创建 fund、fund_nav、account、position、transaction、watchlist 六张表
+- [x] 编写 `data.sql`：初始化默认账户数据（支付宝、微信理财通、天天基金等预设账户）
+- [x] 配置 Spring Boot 启动时自动执行建表脚本
 
 ### Task 1.3 - 前端项目初始化
-- [ ] 在项目根目录创建 `fund-web/` 前端项目：`npm create vite@latest fund-web -- --template react-ts`
-- [ ] 安装核心依赖：antd、@ant-design/icons、echarts、echarts-for-react、axios、zustand、react-router-dom
-- [ ] 配置 `vite.config.ts`：API 代理指向 `http://localhost:8080`
-- [ ] 配置全局样式、Ant Design 主题（品牌蓝 `#1677FF`、红涨绿跌色）
-- [ ] 搭建 `AppLayout` 全局布局组件（顶部导航栏 + 全局搜索框 + 侧边/底部导航）
-- [ ] 配置路由：Dashboard、SearchResult、FundDetail、Portfolio、AddPosition、TransactionList、Watchlist
+- [x] 在项目根目录创建 `fund-web/` 前端项目
+- [x] 安装核心依赖：antd、echarts、axios、zustand、react-router-dom
+- [x] 配置 `vite.config.ts`：API 代理指向后端
+- [x] 配置全局样式、Ant Design 主题
+- [x] 搭建 `AppLayout` 全局布局组件
+- [x] 配置路由
 
 ### Task 1.4 - 通用基础代码
-- [ ] 后端：`Result.java` 统一响应封装、`GlobalExceptionHandler.java` 全局异常处理
-- [ ] 后端：所有 Entity 类（Fund、FundNav、Account、Position、Transaction、Watchlist）
-- [ ] 后端：所有 Mapper 接口
-- [ ] 前端：`api/client.ts` Axios 实例封装（请求拦截、错误提示）
-- [ ] 前端：`utils/format.ts` 数字格式化（金额、百分比、涨跌幅带正负号和颜色）
-- [ ] 前端：`components/PriceChange.tsx` 涨跌幅展示组件（红涨绿跌）
+- [x] 后端：`Result.java` 统一响应封装、`GlobalExceptionHandler.java` 全局异常处理
+- [x] 后端：所有 Entity 类
+- [x] 后端：所有 Mapper 接口
+- [x] 前端：`api/client.ts` Axios 实例封装
+- [x] 前端：`utils/format.ts` 数字格式化
+- [x] 前端：`components/PriceChange.tsx` 涨跌幅展示组件
 
 ---
 
 ## 阶段二：外部数据采集（核心基础设施）
 
 ### Task 2.1 - 基金数据源适配器
-- [ ] 定义 `FundDataSource` 接口：searchFund、getFundDetail、getNavHistory、getEstimateNav
-- [ ] 实现 `EastMoneyDataSource`：对接天天基金/东方财富公开数据接口
+- [x] 定义 `FundDataSource` 接口：searchFund、getFundDetail、getNavHistory、getEstimateNav
+- [x] 实现 `EastMoneyDataSource`：对接天天基金/东方财富公开数据接口
   - 基金搜索（名称/代码模糊匹配）
   - 基金基本信息获取（类型、公司、经理、规模、费率）
   - 历史净值数据获取
   - 十大重仓股和行业分布数据
   - 基金经理信息
-- [ ] 实现 `StockEstimateDataSource`：股票行情兜底估值
+- [x] 实现 `StockEstimateDataSource`：股票行情兆底估值
   - 获取重仓股实时行情
   - 基于持仓比例加权计算基金估算涨幅
-- [ ] 实现 `FundDataAggregator`：多数据源聚合器
+- [x] 实现 `FundDataAggregator`：多数据源聚合器
   - 主数据源查询 → 失败时降级到备用源
   - 估值数据多源交叉验证
   - 缓存管理（Caffeine本地缓存）
+- [x] 实现 `MarketDataSource`：大盘指数实时行情 + 近期K线走势
+- [x] 实现 `SectorDataSource`：板块涨跌排行
+- [x] 实现 `TiantianFundDataSource`：天天基金详情数据
 
 ### Task 2.2 - 数据同步定时任务
-- [ ] `FundDataSyncScheduler`：定时同步基金净值数据
+- [x] `FundDataSyncScheduler`：定时同步基金净值数据
   - 每交易日 19:30 同步前一日净值
   - 交易时段(9:30-15:00)每5分钟刷新估值缓存
   - 每日 00:30 更新基金基本信息
-- [ ] 实现交易日判断逻辑（排除周末和法定节假日）
+- [x] 实现交易日判断逻辑（排除周末和法定节假日）
 
 ---
 
 ## 阶段三：后端业务 API 实现
 
 ### Task 3.1 - 基金查询 API
-- [ ] `FundController` + `FundService`
+- [x] `FundController` + `FundService`
   - `GET /api/fund/search?keyword=xxx` — 基金模糊搜索（优先查本地库，无结果时查外部源并缓存）
   - `GET /api/fund/{code}` — 基金详情（基本信息 + 实时估值 + 历史业绩）
   - `GET /api/fund/{code}/nav-history?period=1m` — 净值历史数据
 
 ### Task 3.2 - 账户管理 API
-- [ ] `AccountController` + `AccountService`
+- [x] `AccountController` + `AccountService`
   - `GET /api/accounts` — 账户列表
   - `POST /api/accounts` — 创建账户
   - `DELETE /api/accounts/{id}` — 删除账户（校验无持仓）
 
 ### Task 3.3 - 持仓管理 API
-- [ ] `PositionController` + `PositionService`
+- [x] `PositionController` + `PositionService`
   - `GET /api/positions?accountId=xxx` — 查询持仓列表（含最新净值和估值）
   - `POST /api/positions` — 添加持仓（自动创建买入交易记录）
   - `PUT /api/positions/{id}/transaction` — 加仓/减仓/清仓
@@ -85,7 +88,7 @@
   - `GET /api/positions/{id}/transactions` — 某持仓的交易记录
 
 ### Task 3.4 - 自选基金 API
-- [ ] `WatchlistController` + `WatchlistService`
+- [x] `WatchlistController` + `WatchlistService`
   - `GET /api/watchlist?group=xxx` — 自选列表（含实时估值和业绩）
   - `POST /api/watchlist` — 添加自选
   - `DELETE /api/watchlist/{id}` — 移除自选
@@ -172,19 +175,43 @@
 ## 阶段五：联调与完善
 
 ### Task 5.1 - 前后端联调
-- [ ] 全链路测试：基金搜索 → 查看详情 → 添加持仓 → 首页展示
+- [x] 全链路测试：基金搜索 → 查看详情 → 添加持仓 → 首页展示
 - [ ] 估值数据验证：对比外部平台数据，校准估值算法
-- [ ] 边界情况处理：空数据、网络错误、外部数据源超时
+- [x] 边界情况处理：空数据、网络错误、外部数据源超时
 
 ### Task 5.2 - 体验优化
-- [ ] 页面加载骨架屏（Ant Design Skeleton）
-- [ ] 全局 loading 状态管理
-- [ ] 错误提示统一处理（网络错误、数据源不可用降级提示）
-- [ ] 页面底部添加免责声明："数据仅供参考，不构成投资建议"
+- [x] 页面加载骨架屏（Ant Design Skeleton）
+- [x] 全局 loading 状态管理
+- [x] 错误提示统一处理
+- [x] 页面底部添加免责声明
 
 ### Task 5.3 - 响应式适配
 - [ ] 桌面端布局优化（宽屏双栏/三栏布局）
 - [ ] 移动端适配（卡片式布局、底部Tab导航）
+
+---
+
+## 阶段六：AI 能力模块
+
+### Task 6.1 - AI 服务层
+- [x] `MarketOverviewService`：市场概览（大盘指数 + 板块涨跌 + 近期走势 + 情绪分析）
+- [x] `FundDiagnosisService`：基金智能诊断（多维度评分、估值分析、业绩分析）
+- [x] `PositionRiskWarningService`：持仓风险预警（组合级风险评估）
+- [x] `RebalanceTimingService`：调仓时机提醒
+
+### Task 6.2 - AI 数据源
+- [x] `MarketDataSource`：大盘指数实时行情 + 新浪K线走势
+- [x] `SectorDataSource`：板块涨跌排行
+- [x] `TiantianFundDataSource`：天天基金详情数据
+
+### Task 6.3 - AI CLI 命令
+- [x] `AiCommand`：4个子命令（market/diagnose/risk/positions）
+- [x] 剔除主观建议字段，仅输出客观事实性指标
+- [x] JSON 格式输出，方便外部 Agent 解析
+
+### Task 6.4 - AI Web API + 前端
+- [x] `AiAnalysisController`、`MarketOverviewController`、`PositionRiskController`、`RebalanceTimingController`
+- [x] 前端组件：MarketOverviewCard、RiskWarningCard、RebalanceTimingCard、AiDiagnosisTab
 
 ---
 
@@ -221,8 +248,9 @@
 | 阶段一：项目基础搭建 | 4 | 低 |
 | 阶段二：外部数据采集 | 2 | **高**（核心难点） |
 | 阶段三：后端业务API | 5 | 中 |
-| 阶段四：前端页面 | 4 | 中 |
+| 阶段四：前端页面 | 5 | 中 |
 | 阶段五：联调完善 | 3 | 中 |
-| **合计** | **18** | |
+| 阶段六：AI 能力模块 | 4 | 高 |
+| **合计** | **23** | |
 
 > **核心难点**：阶段二的外部数据采集是整个项目的基础设施，特别是多数据源验证和股票估值兜底策略，需要投入较多精力确保数据准确性和稳定性。

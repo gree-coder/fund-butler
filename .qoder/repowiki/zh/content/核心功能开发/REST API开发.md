@@ -16,6 +16,7 @@
 - [AddTransactionRequest.java](file://src/main/java/com/qoder/fund/dto/request/AddTransactionRequest.java)
 - [AddWatchlistRequest.java](file://src/main/java/com/qoder/fund/dto/request/AddWatchlistRequest.java)
 - [Result.java](file://src/main/java/com/qoder/fund/common/Result.java)
+- [GlobalExceptionHandler.java](file://src/main/java/com/qoder/fund/common/GlobalExceptionHandler.java)
 </cite>
 
 ## 更新摘要
@@ -24,6 +25,7 @@
 - 添加统一响应格式说明和错误处理机制
 - 补充各控制器的请求参数、响应数据结构和状态码说明
 - 完善数据传输对象(DTO)的详细描述
+- **新增** 全局异常处理器增强，特别改进了缺失API端点的错误报告机制
 
 ## 目录
 1. [简介](#简介)
@@ -37,7 +39,8 @@
 9. [请求参数验证规则](#请求参数验证规则)
 10. [API调用示例](#api调用示例)
 11. [错误处理机制](#错误处理机制)
-12. [总结](#总结)
+12. [全局异常处理增强](#全局异常处理增强)
+13. [总结](#总结)
 
 ## 简介
 本指南为基金管理系统提供全面的RESTful API开发指导。系统基于Spring MVC框架，采用统一的响应格式和严格的参数验证机制。本文档详细说明了各个控制器的接口规范、数据传输对象结构、请求参数验证规则以及完整的API调用示例。
@@ -664,7 +667,79 @@
 - [FundController.java:33-36](file://src/main/java/com/qoder/fund/controller/FundController.java#L33-L36)
 - [Result.java:26-32](file://src/main/java/com/qoder/fund/common/Result.java#L26-L32)
 
-## 总结
-本文档提供了基金管理系统完整的REST API接口规范，涵盖了所有控制器的详细接口说明、数据传输对象结构、参数验证规则和错误处理机制。系统采用统一的响应格式和严格的参数验证，确保了API的一致性和可靠性。开发者可以基于此文档快速理解和使用各个API接口，同时也可以作为系统扩展和维护的重要参考。
+## 全局异常处理增强
 
-通过标准化的接口设计和完善的错误处理机制，该系统能够为前端应用提供稳定可靠的数据服务，支持完整的基金投资管理功能。
+### NoResourceFoundException处理机制
+
+**更新** 系统新增了专门针对缺失API端点的异常处理机制，显著改善了用户体验和调试效率。
+
+#### 异常处理特性
+- **自动检测**: 捕获所有未映射到控制器的请求
+- **统一响应**: 返回标准的Result错误格式
+- **详细日志**: 记录请求方法、URL和异常信息
+- **友好提示**: 提供清晰的"接口不存在"错误消息
+
+#### 处理流程
+1. Spring MVC检测到未匹配的请求路径
+2. 触发NoResourceFoundException异常
+3. GlobalExceptionHandler捕获异常并记录日志
+4. 返回统一的404错误响应
+
+#### 错误响应示例
+```json
+{
+  "code": 404,
+  "message": "接口不存在: /api/nonexistent",
+  "data": null
+}
+```
+
+#### 日志记录格式
+系统会记录类似以下格式的日志：
+```
+[WARN] [GET /api/nonexistent] 资源不存在: No handler method for GET /api/nonexistent
+```
+
+#### 异常处理范围
+该机制适用于所有未映射的API端点，包括：
+- 错误的URL路径
+- 已删除但仍在使用的旧接口
+- 拼写错误的端点名称
+- 不存在的子路径
+
+**章节来源**
+- [GlobalExceptionHandler.java:19-23](file://src/main/java/com/qoder/fund/common/GlobalExceptionHandler.java#L19-L23)
+
+### 其他异常处理增强
+
+#### 统一异常处理体系
+系统采用@RestControllerAdvice注解，提供全面的异常处理覆盖：
+
+| 异常类型 | 处理策略 | HTTP状态码 | 错误消息 |
+|---------|---------|-----------|----------|
+| NoResourceFoundException | 记录日志并返回404 | 404 | 接口不存在: {URL} |
+| IllegalArgumentException | 记录参数错误 | 400 | 参数错误详情 |
+| MethodArgumentNotValidException | 收集验证错误 | 400 | 字段: 错误信息 |
+| BindException | 参数绑定失败 | 400 | 参数格式错误 |
+| OptimisticLockingFailureException | 并发冲突 | 409 | 数据已被其他操作修改 |
+| DataAccessException | 数据库异常 | 500 | 数据库操作失败 |
+| RuntimeException | 运行时异常 | 500 | 服务器内部错误: {消息} |
+| Exception | 未知异常 | 500 | 服务器内部错误 |
+
+#### 日志记录增强
+- **请求路径追踪**: 记录完整的HTTP方法和URL
+- **异常分类**: 区分不同类型的异常便于排查
+- **上下文信息**: 包含异常发生的时间和堆栈信息
+
+**章节来源**
+- [GlobalExceptionHandler.java:15-79](file://src/main/java/com/qoder/fund/common/GlobalExceptionHandler.java#L15-L79)
+
+## 总结
+本文档提供了基金管理系统完整的REST API接口规范，涵盖了所有控制器的详细接口说明、数据传输对象结构、参数验证规则和错误处理机制。系统采用统一的响应格式和严格的参数验证，确保了API的一致性和可靠性。
+
+**主要更新内容**:
+- 新增了全局异常处理增强，特别改进了缺失API端点的错误报告机制
+- 完善了统一的异常处理体系，提供更好的用户体验和调试支持
+- 所有异常都遵循标准的Result格式，确保前后端一致性
+
+开发者可以基于此文档快速理解和使用各个API接口，同时也可以作为系统扩展和维护的重要参考。通过标准化的接口设计、完善的错误处理机制和增强的异常处理能力，该系统能够为前端应用提供稳定可靠的数据服务，支持完整的基金投资管理功能。

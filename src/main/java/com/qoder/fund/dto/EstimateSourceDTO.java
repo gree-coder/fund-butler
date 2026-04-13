@@ -24,8 +24,10 @@ public class EstimateSourceDTO {
         private String strategyType;
         /** 场景名(如"ETF实时"、"权益高覆盖") */
         private String scenario;
-        /** 各数据源的归一化权重 */
+        /** 各数据源的归一化权重（修正后） */
         private Map<String, BigDecimal> weights;
+        /** 基础权重（修正前，仅 smart 源有值） */
+        private Map<String, BigDecimal> baseWeights;
         /** 是否应用了历史准确度修正 */
         private boolean accuracyEnhanced;
         /** 是否为延迟数据(如QDII T+1) */

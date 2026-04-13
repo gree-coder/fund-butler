@@ -7,8 +7,9 @@
 **基金管家**是一款面向个人投资者的基金管理与查询 Web 应用，定位为"一站式基金数据聚合管理工具"。
 
 - **后端**：Spring Boot 3.4.3 + Java 17 + MyBatis-Plus + MySQL
-- **前端**：React 18 + TypeScript + Vite + Ant Design 5 + ECharts 5
+- **前端**：React 19 + TypeScript + Vite + Ant Design 6 + ECharts 5
 - **CLI**：Picocli 4.7.5 + Spring Boot 命令行模式
+- **AI 能力**：规则引擎 + 外部 API（禁用 LLM），面向外部 Agent 提供数据供给
 - **架构**：前后端分离，RESTful API，支持 Web + CLI 双模式
 
 ## 快速导航
@@ -28,8 +29,33 @@
 基金(Fund) ──┬── 净值历史(FundNav)
              ├── 持仓(Position) ── 交易记录(FundTransaction)
              ├── 自选(Watchlist)
-             └── 账户(Account)
+             ├── 账户(Account)
+             └── AI分析
+                  ├── 市场概览(MarketOverview)
+                  ├── 基金诊断(FundDiagnosis)
+                  ├── 风险预警(RiskWarning)
+                  └── 调仓时机(RebalanceTiming)
 ```
+
+## CLI 命令架构
+
+CLI 支持 7 个主命令组：
+
+| 命令 | 说明 | 子命令 |
+|------|------|--------|
+| `fund` | 基金查询与管理 | search, detail, nav, estimate, refresh, analysis |
+| `position` | 持仓管理 | list, add, delete, buy, sell, transactions |
+| `watchlist` | 自选基金 | list, add, remove |
+| `dashboard` | 资产概览 | (默认), trend, broadcast |
+| `account` | 账户管理 | list, create, delete |
+| `sync` | 数据同步 | nav, estimate, holdings, evaluate, compensate, all |
+| `ai` | **AI 数据分析** | market, diagnose, risk, positions |
+
+### AI 数据供给接口设计原则
+
+- **仅输出客观事实性指标**，禁止输出主观建议（如“建议增持/减持”）
+- 决策权完全交给外部 Agent，CLI 是纯数据层
+- 所有输出为 JSON 格式，方便程序化解析
 
 ## 开发规范
 
@@ -132,4 +158,4 @@ npm run lint               # 代码检查
 
 ---
 
-*最后更新: 2026-04-09*
+*最后更新: 2026-04-13*

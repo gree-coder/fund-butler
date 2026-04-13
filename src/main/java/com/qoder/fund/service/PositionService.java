@@ -325,6 +325,11 @@ public class PositionService {
                         if ("actual".equals(source.getKey()) && source.isAvailable()) {
                             dto.setActualNav(source.getEstimateNav());
                             dto.setActualReturn(source.getEstimateReturn());
+                            // 检查是否为延迟数据（QDII等基金 T+1）
+                            if (source.isDelayed()) {
+                                dto.setActualReturnDelayed(true);
+                                dto.setActualNavDate(source.getDelayedDate());
+                            }
                             break;
                         }
                     }
@@ -419,6 +424,11 @@ public class PositionService {
                         if ("actual".equals(source.getKey()) && source.isAvailable()) {
                             dto.setActualNav(source.getEstimateNav());
                             dto.setActualReturn(source.getEstimateReturn());
+                            // 检查是否为延迟数据（QDII等基金 T+1）
+                            if (source.isDelayed()) {
+                                dto.setActualReturnDelayed(true);
+                                dto.setActualNavDate(source.getDelayedDate());
+                            }
                             break;
                         }
                     }
@@ -524,32 +534,21 @@ public class PositionService {
             }
         }
 
-        // 实际净值
-        BigDecimal actualReturn = batchResult.getActualReturn(p.getFundCode());
-        if (actualReturn != null) {
-            dto.setActualReturn(actualReturn);
-            if (latestNav != null) {
-                BigDecimal actualNav = latestNav.multiply(
-                        BigDecimal.ONE.add(actualReturn.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP))
-                ).setScale(4, RoundingMode.HALF_UP);
-                dto.setActualNav(actualNav);
-            }
-        }
-
-        // QDII等基金净值延迟发布
-        if (dto.getActualReturn() == null && "QDII".equals(dto.getFundType())) {
-            EstimateSourceDTO dto2 = batchResult.multiSourceEstimateMap().get(p.getFundCode());
-            if (dto2 != null) {
-                dto2.getSources().stream()
-                        .filter(s -> "actual".equals(s.getKey()) && s.isAvailable() && s.isDelayed())
-                        .findFirst()
-                        .ifPresent(source -> {
-                            dto.setActualNav(source.getEstimateNav());
-                            dto.setActualReturn(source.getEstimateReturn());
+        // 实际净值（需要检查是否为延迟数据）
+        EstimateSourceDTO multiSourceDTO = batchResult.multiSourceEstimateMap().get(p.getFundCode());
+        if (multiSourceDTO != null && multiSourceDTO.getSources() != null) {
+            multiSourceDTO.getSources().stream()
+                    .filter(s -> "actual".equals(s.getKey()) && s.isAvailable())
+                    .findFirst()
+                    .ifPresent(source -> {
+                        dto.setActualNav(source.getEstimateNav());
+                        dto.setActualReturn(source.getEstimateReturn());
+                        // 检查是否为延迟数据（QDII等基金 T+1）
+                        if (source.isDelayed()) {
                             dto.setActualReturnDelayed(true);
-                            dto.setActualNavDate(source.getDelayedDate());  // 设置延迟数据的日期
-                        });
-            }
+                            dto.setActualNavDate(source.getDelayedDate());
+                        }
+                    });
         }
 
         // 行业分布数据

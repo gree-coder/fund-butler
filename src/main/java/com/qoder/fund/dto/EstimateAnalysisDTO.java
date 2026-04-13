@@ -45,6 +45,9 @@ public class EstimateAnalysisDTO {
 
         /** 智能综合预估 */
         private SmartEstimate smartEstimate;
+
+        /** 快照时间（数据抓取时间） */
+        private LocalDateTime snapshotTime;
     }
 
     /**
@@ -78,8 +81,10 @@ public class EstimateAnalysisDTO {
         private String scenario;
         /** 是否应用准确度修正 */
         private boolean accuracyEnhanced;
-        /** 各数据源归一化权重 */
+        /** 各数据源归一化权重（修正后） */
         private Map<String, BigDecimal> weights;
+        /** 基础权重（修正前） */
+        private Map<String, BigDecimal> baseWeights;
         /** 预估说明 */
         private String description;
     }

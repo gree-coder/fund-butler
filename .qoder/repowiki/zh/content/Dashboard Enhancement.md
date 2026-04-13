@@ -9,6 +9,7 @@
 - [DashboardDTO.java](file://src/main/java/com/qoder/fund/dto/DashboardDTO.java)
 - [PositionDTO.java](file://src/main/java/com/qoder/fund/dto/PositionDTO.java)
 - [ProfitTrendDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitTrendDTO.java)
+- [ProfitAnalysisDTO.java](file://src/main/java/com/qoder/fund/dto/ProfitAnalysisDTO.java)
 - [PositionService.java](file://src/main/java/com/qoder/fund/service/PositionService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
 - [EastMoneyDataSource.java](file://src/main/java/com/qoder/fund/datasource/EastMoneyDataSource.java)
@@ -29,6 +30,7 @@
 
 ## 更新摘要
 **所做更改**
+- 收益趋势图表修复：DashboardService.java中的收益趋势计算逻辑已从占位符实现更新为真实的收益趋势计算，使用现有的getProfitAnalysis方法进行历史收益计算，解决了之前显示零值的问题
 - 新增QDII基金报告功能，区分"已验证"和"待验证"位置分类显示
 - 新增`isUsQdiiFund()`方法用于识别纯美股QDII基金
 - 改进仪表板显示逻辑，优化QDII基金的预估待验证显示
@@ -50,7 +52,9 @@
 
 本文档详细分析了基金投资管理系统中的仪表板增强功能。该系统是一个基于Spring Boot和React的Web应用，专注于为个人投资者提供一站式基金数据聚合管理工具。仪表板作为用户登录后的主页面，提供了投资组合的全面概览，包括资产总览、持仓列表、收益趋势分析和行业分布展示等功能。
 
-**更新** 本次更新重点关注仪表板功能的全面增强，特别是QDII基金的报告功能优化。系统现在能够智能区分"已验证"和"待验证"的持仓状态，为用户提供更准确的投资组合状态信息。新增的纯美股QDII识别功能使得系统能够对不同类型的QDII基金采用不同的显示策略，提高了信息的准确性和实用性。
+**更新** 本次更新重点关注仪表板功能的全面增强，特别是QDII基金的报告功能优化和收益趋势图表修复。系统现在能够智能区分"已验证"和"待验证"的持仓状态，为用户提供更准确的投资组合状态信息。新增的纯美股QDII识别功能使得系统能够对不同类型的QDII基金采用不同的显示策略，提高了信息的准确性和实用性。
+
+**更新** 收益趋势图表已从占位符实现修复为真实的收益趋势计算，使用现有的getProfitAnalysis方法进行历史收益计算，解决了之前显示零值的问题，为用户提供更准确的历史收益可视化。
 
 系统采用前后端分离架构，后端使用Java Spring Boot提供RESTful API，前端使用React TypeScript构建用户界面。通过集成多个数据源，系统能够实时获取基金净值、估值和行业分布等关键数据，为用户提供准确的投资决策辅助信息。
 
@@ -84,7 +88,7 @@ S --> T[BroadcastCommand]
 
 **图表来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
-- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardService.java:1-608](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L608)
 - [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
@@ -92,7 +96,7 @@ S --> T[BroadcastCommand]
 
 **章节来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
-- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardService.java:1-608](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L608)
 - [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [index.tsx:1-198](file://fund-web/src/pages/Dashboard/index.tsx#L1-L198)
 
@@ -114,6 +118,7 @@ DashboardService是核心业务逻辑处理单元，负责：
 - **新增**：聚合行业分布数据，按市值加权计算行业占比
 - **新增**：处理持仓数据聚合和行业分布分析，支持QDII基金状态分类
 - **新增**：判断持仓是否为实际验证状态，区分延迟数据
+- **更新**：收益趋势计算逻辑已修复，使用getProfitAnalysis方法进行真实的历史收益计算
 
 #### CLI命令行组件
 **新增**：DashboardCommand提供命令行界面的仪表板功能：
@@ -124,7 +129,8 @@ DashboardService是核心业务逻辑处理单元，负责：
 #### DTO层
 系统使用多个DTO对象来封装数据传输：
 - DashboardDTO：仪表板概览数据，**新增**：industryDistribution字段
-- ProfitTrendDTO：收益趋势数据
+- ProfitTrendDTO：收益趋势数据，**更新**：现在包含真实的历史收益数据
+- ProfitAnalysisDTO：收益分析数据，**新增**：包含累计收益、回撤分析和性能指标
 - PositionDTO：持仓详情数据，**新增**：industryDist字段，**新增**：actualReturnDelayed字段
 - FundDetailDTO：基金详情数据，**新增**：industryDist字段
 
@@ -135,7 +141,7 @@ React组件负责展示仪表板的所有功能，包括：
 - 资产总览卡片（支持金额隐藏）
 - 持仓基金列表（带类型标识和收益信息）
 - **新增**：行业分布饼图展示
-- 收益趋势图表（支持时间范围切换）
+- **更新**：收益趋势图表现在显示真实的历史收益数据，而非零值
 - 金额隐私保护功能
 
 #### Portfolio页面
@@ -147,10 +153,10 @@ React组件负责展示仪表板的所有功能，包括：
 #### API接口
 dashboardApi模块提供类型安全的API调用：
 - getData：获取仪表板数据（包含行业分布）
-- getProfitTrend：获取收益趋势
-- getProfitAnalysis：获取收益分析数据
+- getProfitTrend：获取收益趋势（**更新**：现在返回真实的历史收益数据）
+- getProfitAnalysis：获取收益分析数据（**新增**：包含回撤分析和性能指标）
 
-**更新** 新增了行业分布数据的API支持和前端展示功能。
+**更新** 新增了行业分布数据的API支持和前端展示功能，收益趋势API已修复为真实数据。
 
 **章节来源**
 - [DashboardController.java:18-34](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L18-L34)
@@ -221,7 +227,7 @@ Broadcast --> EstimateAnalysis
 
 **图表来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
-- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardService.java:1-608](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L608)
 - [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [EstimateAnalysisService.java:1-404](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L1-L404)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
@@ -320,9 +326,27 @@ ReturnData --> End([结束])
 **图表来源**
 - [DashboardService.java:49-126](file://src/main/java/com/qoder/fund/service/DashboardService.java#L49-L126)
 
+#### 收益趋势计算修复流程
+
+```mermaid
+flowchart TD
+Start([开始收益趋势计算]) --> CallAnalysis["调用getProfitAnalysis(days)"]
+CallAnalysis --> CheckData{"分析数据存在?"}
+CheckData --> |是| ExtractData["提取dates和cumulativeProfits"]
+ExtractData --> BuildTrend["构建ProfitTrendDTO"]
+BuildTrend --> ReturnTrend["返回收益趋势数据"]
+CheckData --> |否| ReturnEmpty["返回空数据"]
+ReturnEmpty --> End([完成])
+```
+
+**图表来源**
+- [DashboardService.java:159-175](file://src/main/java/com/qoder/fund/service/DashboardService.java#L159-L175)
+- [DashboardService.java:177-329](file://src/main/java/com/qoder/fund/service/DashboardService.java#L177-L329)
+
 **章节来源**
 - [DashboardService.java:37-154](file://src/main/java/com/qoder/fund/service/DashboardService.java#L37-L154)
 - [DashboardCommand.java:196-281](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L196-L281)
+- [DashboardService.java:159-175](file://src/main/java/com/qoder/fund/service/DashboardService.java#L159-L175)
 
 ### 前端组件架构
 
@@ -375,6 +399,22 @@ Portfolio --> PositionList[持仓列表]
 
 **图表来源**
 - [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
+
+#### 收益趋势图表配置
+
+```mermaid
+flowchart TD
+TrendData[收益趋势数据] --> CheckData{"数据存在?"}
+CheckData --> |是| BuildOption["构建ECharts配置"]
+CheckData --> |否| ShowSkeleton["显示骨架屏"]
+BuildOption --> SetColors["设置颜色：正收益红色，负收益绿色"]
+SetColors --> SetGrid["设置图表边距"]
+SetGrid --> RenderChart["渲染图表"]
+ShowSkeleton --> End([完成])
+```
+
+**图表来源**
+- [index.tsx:40-53](file://fund-web/src/pages/Dashboard/index.tsx#L40-L53)
 
 **章节来源**
 - [index.tsx:13-198](file://fund-web/src/pages/Dashboard/index.tsx#L13-L198)
@@ -467,11 +507,18 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 - 按市值加权计算行业占比，支持前10大行业展示
 - 行业数据来源于基金持仓的最新季报数据
 
-#### 收益趋势图表
-- 使用ECharts实现柱状图展示
+#### **更新** 收益趋势图表
+- 使用ECharts实现柱状图展示真实的历史收益数据
 - 收益为正显示红色，为负显示绿色
 - 支持7天和30天时间范围切换
 - 骨架屏加载提升用户体验
+- **修复**：从占位符实现更新为真实的收益趋势计算，使用getProfitAnalysis方法进行历史收益计算
+
+#### **新增** 收益分析功能
+- **收益曲线**：展示每日真实收益和累计收益
+- **回撤分析**：计算最大回撤、回撤幅度和持续时间
+- **性能指标**：包括总收益率、年化收益率、夏普比率、波动率等
+- **时间范围**：默认30天，支持自定义调整
 
 **章节来源**
 - [index.tsx:58-103](file://fund-web/src/pages/Dashboard/index.tsx#L58-L103)
@@ -479,6 +526,7 @@ FUND ||--o{ FUND_TRANSACTION : "产生"
 - [index.tsx:171-176](file://fund-web/src/pages/Dashboard/index.tsx#L171-L176)
 - [index.tsx:88-117](file://fund-web/src/pages/Portfolio/index.tsx#L88-L117)
 - [DashboardCommand.java:246-294](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L246-L294)
+- [DashboardService.java:159-175](file://src/main/java/com/qoder/fund/service/DashboardService.java#L159-L175)
 
 ## 依赖关系分析
 
@@ -580,7 +628,7 @@ DP --> EC
 
 **章节来源**
 - [DashboardController.java:1-36](file://src/main/java/com/qoder/fund/controller/DashboardController.java#L1-L36)
-- [DashboardService.java:1-472](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L472)
+- [DashboardService.java:1-608](file://src/main/java/com/qoder/fund/service/DashboardService.java#L1-L608)
 - [DashboardCommand.java:1-319](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L1-L319)
 - [FundDataAggregator.java:1-200](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L200)
 
@@ -597,6 +645,8 @@ DP --> EC
 5. **新增**：行业分布数据聚合优化，使用HashMap进行高效合并操作
 6. **新增**：QDII基金状态分类优化，避免重复的字符串匹配操作
 7. **新增**：纯美股QDII识别使用预编译的字符串匹配，提高性能
+8. **更新**：收益趋势计算优化，复用getProfitAnalysis方法避免重复计算
+9. **新增**：收益分析数据的批量处理和缓存策略
 
 ### 前端性能优化
 
@@ -605,6 +655,7 @@ DP --> EC
 3. **数据缓存**：本地存储金额可见性设置，提升用户体验
 4. **骨架屏**：使用PageSkeleton提供更好的加载体验
 5. **新增**：图表数据预处理，避免重复计算和渲染
+6. **更新**：收益趋势数据的实时更新和缓存机制
 
 ### 数据源性能
 
@@ -614,8 +665,9 @@ DP --> EC
 - 本地缓存机制减少对外部API的依赖
 - **新增**：行业分布数据的批量处理和缓存策略
 - **新增**：QDII基金状态的快速判断机制
+- **更新**：收益趋势数据的高效计算和缓存
 
-**更新** 新增了QDII基金报告功能和行业分布数据的性能优化建议。
+**更新** 新增了QDII基金报告功能和行业分布数据的性能优化建议，以及收益趋势计算的性能优化。
 
 **章节来源**
 - [application.yml:18-25](file://src/main/resources/application.yml#L18-L25)
@@ -639,6 +691,21 @@ DP --> EC
 2. 查看浏览器开发者工具中的网络请求
 3. 验证后端服务运行状态
 4. 检查数据库连接配置
+
+#### **新增** 收益趋势数据异常
+
+**症状**：收益趋势图表显示零值或空白
+**可能原因**：
+1. 收益趋势计算逻辑仍使用占位符实现
+2. getProfitAnalysis方法返回空数据
+3. 数据转换和类型处理问题
+4. **更新**：收益趋势API未正确调用getProfitAnalysis方法
+
+**解决步骤**：
+1. 检查DashboardService.getProfitTrend方法的实现
+2. 验证getProfitAnalysis方法是否正确返回数据
+3. 确认ProfitTrendDTO的构建逻辑
+4. **更新**：确认getProfitTrend方法正确调用getProfitAnalysis并提取数据
 
 #### **新增** QDII基金报告异常
 
@@ -669,18 +736,20 @@ DP --> EC
 3. 确认数据类型转换和BigDecimal运算精度
 4. 检查EastMoneyDataSource中的行业数据解析
 
-#### 收益趋势数据异常
+#### **新增** 收益分析数据异常
 
-**症状**：收益趋势图表显示异常数据
+**症状**：收益分析图表显示异常或数据不准确
 **可能原因**：
 1. 历史净值数据缺失
-2. 计算逻辑错误
-3. 时间格式处理问题
+2. 交易记录处理逻辑错误
+3. 回撤计算和性能指标计算错误
+4. **新增**：getProfitAnalysis方法实现问题
 
 **解决步骤**：
 1. 检查FundNav表中是否有历史数据
-2. 验证ProfitTrendDTO的生成逻辑
+2. 验证ProfitAnalysisDTO的生成逻辑
 3. 确认日期格式转换正确
+4. **新增**：检查getProfitAnalysis方法的完整实现和数据处理
 
 #### 金额显示问题
 
@@ -704,6 +773,7 @@ DP --> EC
 3. 数据格式不匹配
 4. **新增**：行业分布数据格式不兼容
 5. **新增**：QDII基金状态数据格式问题
+6. **更新**：收益趋势数据格式不兼容
 
 **解决步骤**：
 1. 检查网络连接和CDN资源
@@ -711,6 +781,7 @@ DP --> EC
 3. 确认数据格式符合ECharts要求
 4. **新增**：验证industryDistribution数据结构
 5. **新增**：检查QDII基金状态数据的序列化
+6. **更新**：验证ProfitTrendDTO的数据格式
 
 ### 调试技巧
 
@@ -719,11 +790,13 @@ DP --> EC
 3. **网络调试**：监控API响应时间和错误码
 4. **数据库调试**：检查关键查询的执行计划
 5. **图表调试**：使用浏览器开发者工具检查ECharts实例
-6. **新增**：QDII基金调试**：检查纯美股QDII识别逻辑和状态分类
-7. **新增**：行业数据调试**：检查API返回的行业分布数据格式和完整性
-8. **新增**：预估验证调试**：检查EstimateAnalysisService中的"预估（待验证）"标记逻辑
+6. **新增**：QDII基金调试：检查纯美股QDII识别逻辑和状态分类
+7. **新增**：行业数据调试：检查API返回的行业分布数据格式和完整性
+8. **新增**：预估验证调试：检查EstimateAnalysisService中的"预估（待验证）"标记逻辑
+9. **更新**：收益趋势调试：检查getProfitTrend方法是否正确调用getProfitAnalysis
+10. **新增**：收益分析调试：验证getProfitAnalysis方法的完整数据处理流程
 
-**更新** 新增了QDII基金报告功能和预估验证相关的调试方法。
+**更新** 新增了收益趋势计算修复相关的调试方法，以及收益分析功能的调试指导。
 
 **章节来源**
 - [EmptyGuide.tsx:1-35](file://fund-web/src/components/EmptyGuide.tsx#L1-L35)
@@ -731,6 +804,7 @@ DP --> EC
 - [client.ts:9-28](file://fund-web/src/api/client.ts#L9-L28)
 - [DashboardCommand.java:283-294](file://src/main/java/com/qoder/fund/cli/DashboardCommand.java#L283-L294)
 - [EstimateAnalysisService.java:331](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L331)
+- [DashboardService.java:159-175](file://src/main/java/com/qoder/fund/service/DashboardService.java#L159-L175)
 
 ## 结论
 
@@ -744,10 +818,12 @@ DP --> EC
 2. **直观的可视化**：通过图表和卡片布局，让用户快速理解投资状况
 3. **深入的行业分析**：提供按市值加权的行业分布，帮助用户理解风险暴露
 4. **智能的QDII基金报告**：区分"已验证"和"待验证"持仓状态，提供更准确的信息
-5. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
-6. **可扩展的架构**：模块化的组件设计便于后续功能扩展
-7. **增强的隐私保护**：金额隐藏功能保护用户财务隐私
-8. **精确的状态分类**：纯美股QDII的特殊处理提高了信息的准确性
+5. **修复的收益趋势图表**：从占位符实现更新为真实的收益趋势计算，使用getProfitAnalysis方法进行历史收益计算，解决了之前显示零值的问题
+6. **全面的收益分析**：新增收益曲线、回撤分析和性能指标，提供更深入的投资洞察
+7. **良好的用户体验**：支持金额隐藏、响应式设计、快速交互
+8. **可扩展的架构**：模块化的组件设计便于后续功能扩展
+9. **增强的隐私保护**：金额隐藏功能保护用户财务隐私
+10. **精确的状态分类**：纯美股QDII的特殊处理提高了信息的准确性
 
 ### 技术亮点
 
@@ -760,6 +836,8 @@ DP --> EC
 - **新增**：QDII基金智能识别和状态分类
 - **新增**：纯美股QDII的特殊显示逻辑
 - **新增**：预估验证状态的完整处理机制
+- **更新**：收益趋势计算的性能优化和数据准确性提升
+- **新增**：完整的收益分析功能，包括回撤和性能指标
 
 ### 未来改进方向
 
@@ -771,5 +849,9 @@ DP --> EC
 6. **新增**：数据导出功能：支持行业分布和收益分析数据的导出
 7. **新增**：QDII基金预警功能：对即将发布净值的QDII基金进行提醒
 8. **新增**：多语言支持：支持中英文等多语言界面
+9. **更新**：进一步优化收益趋势计算的性能和准确性
+10. **新增**：机器学习预测：基于历史数据提供收益预测功能
 
-该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化、用户交互、行业分析和QDII基金报告方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。
+该系统为个人投资者提供了一个强大而易用的基金管理工具，通过持续的功能增强和技术优化，能够更好地服务于用户的投资决策需求。仪表板的重新设计使其在数据可视化、用户交互、行业分析、QDII基金报告和收益趋势计算方面达到了新的高度，为用户提供了更加直观和便捷的投资管理体验。
+
+**更新** 收益趋势图表修复是本次更新的重要成果，解决了用户反馈的历史收益显示问题，使系统能够提供真实、准确的历史收益数据，大大提升了用户体验和系统的实用性。
