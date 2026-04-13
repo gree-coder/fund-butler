@@ -5,7 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.qoder.fund.dto.*;
+import com.qoder.fund.datasource.FundDataAggregator;
+import com.qoder.fund.datasource.StockEstimateDataSource;
 import com.qoder.fund.datasource.TiantianFundDataSource;
+import com.qoder.fund.mapper.EstimatePredictionMapper;
+import com.qoder.fund.mapper.FundMapper;
+import com.qoder.fund.entity.Fund;
 import com.qoder.fund.service.DashboardService;
 import com.qoder.fund.service.FundDiagnosisService;
 import com.qoder.fund.service.MarketOverviewService;
@@ -16,6 +21,7 @@ import picocli.CommandLine;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -127,7 +133,47 @@ public class ReportCommand implements Callable<Integer> {
                     output.put("decliningSectors", formatSectors(overview.getDecliningSectors()));
                 }
 
-                // 大盘指数近期走势（客观K线数据）
+                // 大盘指数今日涨跌汇总统计（基于实时指数数据）
+                if (overview.getIndices() != null && !overview.getIndices().isEmpty()) {
+                    int upCount = 0;
+                    int downCount = 0;
+                    int unchangedCount = 0;
+                    String leaderName = null;
+                    BigDecimal leaderPct = null;
+                    String laggardName = null;
+                    BigDecimal laggardPct = null;
+                    for (MarketOverviewDTO.IndexData idx : overview.getIndices()) {
+                        BigDecimal pct = idx.getChangePercent();
+                        if (pct == null) continue;
+                        int cmp = pct.compareTo(BigDecimal.ZERO);
+                        if (cmp > 0) upCount++;
+                        else if (cmp < 0) downCount++;
+                        else unchangedCount++;
+                        if (leaderPct == null || pct.compareTo(leaderPct) > 0) {
+                            leaderPct = pct;
+                            leaderName = idx.getName();
+                        }
+                        if (laggardPct == null || pct.compareTo(laggardPct) < 0) {
+                            laggardPct = pct;
+                            laggardName = idx.getName();
+                        }
+                    }
+                    Map<String, Object> indexSummary = new HashMap<>();
+                    indexSummary.put("upCount", upCount);
+                    indexSummary.put("downCount", downCount);
+                    indexSummary.put("unchangedCount", unchangedCount);
+                    Map<String, Object> leaderObj = new HashMap<>();
+                    leaderObj.put("name", leaderName);
+                    leaderObj.put("changePercent", leaderPct);
+                    indexSummary.put("leader", leaderObj);
+                    Map<String, Object> laggardObj = new HashMap<>();
+                    laggardObj.put("name", laggardName);
+                    laggardObj.put("changePercent", laggardPct);
+                    indexSummary.put("laggard", laggardObj);
+                    output.put("indexSummary", indexSummary);
+                }
+
+                // 大盘指数近期K线走势（客观数据）
                 if (overview.getIndexTrends() != null && !overview.getIndexTrends().isEmpty()) {
                     List<Map<String, Object>> trends = new ArrayList<>();
                     for (MarketOverviewDTO.IndexTrend trend : overview.getIndexTrends()) {
@@ -361,6 +407,10 @@ public class ReportCommand implements Callable<Integer> {
 
         private final DashboardService dashboardService;
         private final TiantianFundDataSource tiantianFundDataSource;
+        private final FundDataAggregator fundDataAggregator;
+        private final FundMapper fundMapper;
+        private final StockEstimateDataSource stockEstimateDataSource;
+        private final EstimatePredictionMapper estimatePredictionMapper;
 
         @Override
         public Integer call() {
@@ -429,6 +479,29 @@ public class ReportCommand implements Callable<Integer> {
                         // 获取业绩失败不影响整体输出
                     }
 
+                    // 获取近期走势（近1个月净值历史）
+                    try {
+                        indicator.setRecentTrend(
+                                calcRecentTrend(position.getFundCode()));
+                    } catch (Exception e) {
+                        // 走势计算失败不影响整体输出
+                    }
+
+                    // 获取重仓股今日表现
+                    try {
+                        calcTopHoldingsPerformance(position.getFundCode(), indicator);
+                    } catch (Exception e) {
+                        // 重仓股数据获取失败不影响整体输出
+                    }
+
+                    // 获取预估可靠性
+                    try {
+                        indicator.setEstimateReliability(
+                                calcEstimateReliability(position.getFundCode()));
+                    } catch (Exception e) {
+                        // 可靠性计算失败不影响整体输出
+                    }
+
                     funds.add(indicator);
                 }
 
@@ -440,6 +513,173 @@ public class ReportCommand implements Callable<Integer> {
             } catch (Exception e) {
                 System.err.println("获取持仓指标失败: " + e.getMessage());
                 return 1;
+            }
+        }
+
+        /**
+         * 计算单只基金近期走势指标
+         */
+        private CliPositionIndicatorDTO.RecentTrend calcRecentTrend(String fundCode) {
+            LocalDate end = LocalDate.now();
+            LocalDate start = end.minusDays(30); // 取30天确保覚盖10个交易日
+            DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
+            List<Map<String, Object>> navList = fundDataAggregator.getNavHistory(
+                    fundCode, start.format(fmt), end.format(fmt));
+            if (navList == null || navList.size() < 2) return null;
+
+            // navList 按时间正序（旧→新）
+            int size = navList.size();
+            BigDecimal latestNav = (BigDecimal) navList.get(size - 1).get("nav");
+
+            CliPositionIndicatorDTO.RecentTrend trend = new CliPositionIndicatorDTO.RecentTrend();
+            trend.setChange3d(calcPeriodChange(navList, 3, latestNav));
+            trend.setChange5d(calcPeriodChange(navList, 5, latestNav));
+            trend.setChange10d(calcPeriodChange(navList, 10, latestNav));
+
+            // 计算连续涨跌天数
+            int consecutive = 0;
+            for (int i = size - 1; i >= 1; i--) {
+                BigDecimal cur = (BigDecimal) navList.get(i).get("nav");
+                BigDecimal prev = (BigDecimal) navList.get(i - 1).get("nav");
+                int cmp = cur.compareTo(prev);
+                if (i == size - 1) {
+                    consecutive = (cmp > 0) ? 1 : (cmp < 0) ? -1 : 0;
+                } else {
+                    if (consecutive > 0 && cmp > 0) consecutive++;
+                    else if (consecutive < 0 && cmp < 0) consecutive--;
+                    else break;
+                }
+            }
+            trend.setConsecutiveDays(consecutive);
+
+            // 走势方向基于3日涨幅判断
+            BigDecimal c3 = trend.getChange3d();
+            if (c3 != null) {
+                if (c3.compareTo(new BigDecimal("0.5")) > 0) {
+                    trend.setTrendDirection("上涨");
+                } else if (c3.compareTo(new BigDecimal("-0.5")) < 0) {
+                    trend.setTrendDirection("下跌");
+                } else {
+                    trend.setTrendDirection("震荡");
+                }
+            }
+
+            return trend;
+        }
+
+        private BigDecimal calcPeriodChange(List<Map<String, Object>> navList, int days, BigDecimal latestNav) {
+            int size = navList.size();
+            if (size <= days) return null;
+            BigDecimal baseNav = (BigDecimal) navList.get(size - 1 - days).get("nav");
+            if (baseNav == null || baseNav.compareTo(BigDecimal.ZERO) == 0) return null;
+            return latestNav.subtract(baseNav)
+                    .multiply(new BigDecimal("100"))
+                    .divide(baseNav, 2, RoundingMode.HALF_UP);
+        }
+
+        /**
+         * 获取重仓股今日表现并计算贡献度
+         */
+        private void calcTopHoldingsPerformance(String fundCode,
+                                                 CliPositionIndicatorDTO.FundIndicator indicator) {
+            Fund fund = fundMapper.selectById(fundCode);
+            if (fund == null) return;
+            List<Map<String, Object>> holdings = fund.getTopHoldings();
+            if (holdings == null || holdings.isEmpty()) return;
+
+            // 提取股票代码和权重
+            List<String> stockCodes = new ArrayList<>();
+            Map<String, BigDecimal> ratioMap = new HashMap<>();
+            Map<String, String> nameMap = new HashMap<>();
+            for (Map<String, Object> h : holdings) {
+                String stockCode = String.valueOf(h.get("stockCode"));
+                String stockName = String.valueOf(h.getOrDefault("stockName", ""));
+                BigDecimal ratio = toBigDecimal(h.get("ratio"));
+                if (stockCode.isEmpty() || ratio.compareTo(BigDecimal.ZERO) <= 0) continue;
+                String formatted = stockEstimateDataSource.formatStockCodePublic(stockCode);
+                if (formatted.isEmpty()) continue;
+                stockCodes.add(formatted);
+                ratioMap.put(formatted, ratio);
+                nameMap.put(formatted, stockName);
+            }
+            if (stockCodes.isEmpty()) return;
+
+            // 获取股票实时涨跌幅
+            Map<String, BigDecimal> stockReturns =
+                    stockEstimateDataSource.fetchStockReturnsBatchedPublic(stockCodes);
+
+            List<CliPositionIndicatorDTO.HoldingPerformance> perfList = new ArrayList<>();
+            BigDecimal contribution = BigDecimal.ZERO;
+            for (String code : stockCodes) {
+                BigDecimal change = stockReturns.getOrDefault(code, null);
+                BigDecimal weight = ratioMap.get(code);
+                CliPositionIndicatorDTO.HoldingPerformance hp = new CliPositionIndicatorDTO.HoldingPerformance();
+                hp.setName(nameMap.get(code));
+                hp.setWeight(weight);
+                hp.setTodayChange(change);
+                perfList.add(hp);
+                if (change != null) {
+                    contribution = contribution.add(weight.multiply(change)
+                            .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP));
+                }
+            }
+            indicator.setTopHoldingsPerformance(perfList);
+            indicator.setTopHoldingsContribution(
+                    contribution.setScale(2, RoundingMode.HALF_UP));
+        }
+
+        /**
+         * 计算预估可靠性
+         */
+        private CliPositionIndicatorDTO.EstimateReliability calcEstimateReliability(String fundCode) {
+            LocalDate now = LocalDate.now();
+            // 查询最近30天的准确度统计
+            List<Map<String, Object>> stats = estimatePredictionMapper.getAccuracyStats(
+                    fundCode, now.minusDays(30));
+            if (stats == null || stats.isEmpty()) return null;
+
+            // 找到MAE最小的数据源作为主数据源
+            String primarySource = null;
+            BigDecimal bestMae = null;
+            for (Map<String, Object> stat : stats) {
+                Object maeObj = stat.get("mae");
+                BigDecimal mae = maeObj != null ? new BigDecimal(maeObj.toString()) : null;
+                if (mae != null && (bestMae == null || mae.compareTo(bestMae) < 0)) {
+                    bestMae = mae;
+                    primarySource = (String) stat.get("sourceKey");
+                }
+            }
+            if (primarySource == null) return null;
+
+            // 获取主数据源7天/30天MAE
+            BigDecimal mae7d = estimatePredictionMapper.getMaeInPeriod(
+                    fundCode, primarySource, now.minusDays(7), now);
+            BigDecimal mae30d = bestMae;
+
+            CliPositionIndicatorDTO.EstimateReliability reliability =
+                    new CliPositionIndicatorDTO.EstimateReliability();
+            reliability.setPrimarySource(primarySource);
+            reliability.setMae7d(mae7d != null ? mae7d.setScale(2, RoundingMode.HALF_UP) : null);
+            reliability.setMae30d(mae30d.setScale(2, RoundingMode.HALF_UP));
+
+            // 可靠性等级
+            BigDecimal refMae = mae7d != null ? mae7d : mae30d;
+            if (refMae.compareTo(new BigDecimal("0.2")) < 0) {
+                reliability.setReliabilityLevel("高");
+            } else if (refMae.compareTo(new BigDecimal("0.4")) < 0) {
+                reliability.setReliabilityLevel("中");
+            } else {
+                reliability.setReliabilityLevel("低");
+            }
+            return reliability;
+        }
+
+        private BigDecimal toBigDecimal(Object value) {
+            if (value == null) return BigDecimal.ZERO;
+            try {
+                return new BigDecimal(value.toString().replace("%", "").trim());
+            } catch (Exception e) {
+                return BigDecimal.ZERO;
             }
         }
     }

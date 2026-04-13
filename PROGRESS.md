@@ -1,7 +1,7 @@
 # 基金管家开发进度
 
 > Harness Engineering 进度跟踪文件
-> 最后更新: 2026-04-13 (数据分析报告命名重构 + CLI 数据供给接口)
+> 最后更新: 2026-04-13 (CLI 数据供给接口增强：index_summary/重仓股表现/数据源准确度)
 
 ## 项目状态概览
 
@@ -116,6 +116,7 @@
 
 | 日期 | 任务 | 提交 |
 |------|------|------|
+| 2026-04-13 | **CLI 数据供给增强**：`report market` index_summary 改用实时指数+leader/laggard 对象结构；`report positions` 新增 topHoldingsPerformance（重仓股今日表现+贡献度）、estimateReliability（数据源准确度 MAE+可靠性等级）、recent_trend 走势方向改用 3 日判断 | - |
 | 2026-04-13 | **命名重构**：将 `ai` 命令组重命名为 `report`，AiCommand→ReportCommand，AiFundDiagnosisDTO→FundDiagnosisDTO，/api/ai→/api/report，去除误导性 AI 命名 | - |
 | 2026-04-13 | **数据分析 CLI 数据供给接口**：新增 `report` 命令组（market/diagnose/risk/positions），面向外部 Agent 输出 JSON 格式客观数据，不含主观建议 | - |
 | 2026-04-13 | **大盘近期走势集成**：市场概览新增近5个交易日K线数据（新浪财经API），含开收高低、区间涨跌幅 | - |

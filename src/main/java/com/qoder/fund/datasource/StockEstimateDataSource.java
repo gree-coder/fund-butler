@@ -259,6 +259,20 @@ public class StockEstimateDataSource {
     }
 
     /**
+     * 根据原始股票代码格式化为东方财富 API 格式（公开方法）
+     */
+    public String formatStockCodePublic(String code) {
+        return formatStockCode(code);
+    }
+
+    /**
+     * 批量获取股票实时涨跌幅（公开方法，返回百分比涨幅）
+     */
+    public Map<String, BigDecimal> fetchStockReturnsBatchedPublic(List<String> stockCodes) {
+        return fetchStockReturnsBatched(stockCodes);
+    }
+
+    /**
      * 批量获取股票实时涨跌幅（分批请求，每批最多50只股票）
      */
     private Map<String, BigDecimal> fetchStockReturnsBatched(List<String> stockCodes) {

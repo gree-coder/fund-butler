@@ -134,5 +134,70 @@ public class CliPositionIndicatorDTO {
          * 行业分布 [{industry, ratio}]
          */
         private List<Map<String, Object>> industryDist;
+
+        /**
+         * 近期走势（基于净值历史计算）
+         */
+        private RecentTrend recentTrend;
+
+        /**
+         * 重仓股今日表现
+         */
+        private List<HoldingPerformance> topHoldingsPerformance;
+
+        /**
+         * 重仓股对今日涨幅的贡献(%)
+         */
+        private BigDecimal topHoldingsContribution;
+
+        /**
+         * 预估可靠性
+         */
+        private EstimateReliability estimateReliability;
+    }
+
+    /**
+     * 近期走势指标
+     */
+    @Data
+    public static class RecentTrend {
+        /** 近3日累计涨幅(%) */
+        private BigDecimal change3d;
+        /** 近5日累计涨幅(%) */
+        private BigDecimal change5d;
+        /** 近10日累计涨幅(%) */
+        private BigDecimal change10d;
+        /** 走势方向: 上涨/下跌/震荡 */
+        private String trendDirection;
+        /** 连续上涨或下跌天数（正=连涨，负=连跌） */
+        private Integer consecutiveDays;
+    }
+
+    /**
+     * 重仓股今日表现
+     */
+    @Data
+    public static class HoldingPerformance {
+        /** 股票名称 */
+        private String name;
+        /** 持仓占比(%) */
+        private BigDecimal weight;
+        /** 今日涨幅(%) */
+        private BigDecimal todayChange;
+    }
+
+    /**
+     * 预估可靠性指标
+     */
+    @Data
+    public static class EstimateReliability {
+        /** 主要数据源 */
+        private String primarySource;
+        /** 最近7天MAE */
+        private BigDecimal mae7d;
+        /** 最近30天MAE */
+        private BigDecimal mae30d;
+        /** 可靠性等级: 高/中/低 */
+        private String reliabilityLevel;
     }
 }

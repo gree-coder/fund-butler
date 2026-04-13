@@ -534,10 +534,10 @@ CREATE TABLE watchlist (
 
 | 命令 | 说明 | 输出 |
 |------|------|------|
-| `report market` | 市场概览（大盘+板块+近期走势） | JSON（剔除主观建议） |
+| `report market` | 市场概览（大盘+板块+近期走势+indexSummary汇总） | JSON（剔除主观建议） |
 | `report diagnose <code>` | 单只基金诊断 | JSON（剔除主观建议） |
 | `report risk` | 持仓风险分析 | JSON（剔除主观建议） |
-| `report positions` | 持仓客观指标 | JSON |
+| `report positions` | 持仓客观指标（近期走势+重仓股表现+数据源准确度） | JSON |
 
 > **设计原则**：CLI 仅作为数据供给层，输出客观事实性指标，不输出任何主观建议，决策权交给外部 Agent。所有分析基于规则引擎 + 外部 API 数据，不涉及 LLM。
 
