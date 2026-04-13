@@ -50,9 +50,10 @@
 - [x] **收益分析** - 收益曲线、回撤分析、夏普比率、胜率统计（精确算法，正确处理交易记录）
 - [x] **CLI 工具** - 命令行接口，支持定时任务、数据同步、收益播报
 - [x] **数据分析报告** - 面向外部 Agent 的数据供给接口（市场概览、基金诊断、风险预警、持仓指标）
-- [x] **市场概览** - 大盘指数实时行情 + 近5日K线走势 + 板块涨跌排行
+- [x] **市场概览** - 大盘指数实时行情 + 近5日K线走势 + 板块涨跌排行 + 指数涨跌汇总统计
 - [x] **基金智能诊断** - 多维度评分（业绩、风险、估值、稳定性、费率）（规则引擎）
 - [x] **持仓风险预警** - 组合级风险检测（集中度、行业分散、估值健康度）
+- [x] **持仓指标增强** - 近期走势（3/5/10日涨幅）、重仓股今日表现+贡献度、数据源准确度(MAE)
 - [x] **日志系统** - 分级日志、请求日志、API 日志拦截器
 
 ### 进行中功能
@@ -177,10 +178,10 @@ java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --brief   # 简
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --json    # JSON 格式
 
 # 数据分析报告（面向外部 Agent，输出 JSON 格式客观数据）
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report market              # 市场概览（大盘+板块+近期走势）
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report market              # 市场概览（大盘+板块+近期走势+indexSummary汇总）
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report diagnose 161725     # 单只基金诊断
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report risk                # 持仓风险分析
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report positions           # 持仓客观指标
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report positions           # 持仓指标（近期走势+重仓股表现+数据源准确度）
 
 # 或使用脚本
 ./scripts/fund-cli fund search 白酒
