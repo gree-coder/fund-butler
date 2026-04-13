@@ -6,10 +6,10 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * AI 基金诊断报告 DTO
+ * 基金诊断报告 DTO
  */
 @Data
-public class AiFundDiagnosisDTO {
+public class FundDiagnosisDTO {
 
     /**
      * 基金代码

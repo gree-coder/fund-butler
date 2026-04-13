@@ -32,7 +32,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
     private final DashboardCommand dashboardCommand;
     private final AccountCommand accountCommand;
     private final SyncCommand syncCommand;
-    private final AiCommand aiCommand;
+    private final ReportCommand reportCommand;
     private final DataSource dataSource;
 
     private int exitCode;
@@ -45,7 +45,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
             DashboardCommand dashboardCommand,
             AccountCommand accountCommand,
             SyncCommand syncCommand,
-            AiCommand aiCommand,
+            ReportCommand reportCommand,
             DataSource dataSource) {
         this.factory = factory;
         this.fundCommand = fundCommand;
@@ -54,7 +54,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
         this.dashboardCommand = dashboardCommand;
         this.accountCommand = accountCommand;
         this.syncCommand = syncCommand;
-        this.aiCommand = aiCommand;
+        this.reportCommand = reportCommand;
         this.dataSource = dataSource;
     }
 
@@ -107,7 +107,7 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
         commandLine.addSubcommand("dashboard", dashboardCommand);
         commandLine.addSubcommand("account", accountCommand);
         commandLine.addSubcommand("sync", syncCommand);
-        commandLine.addSubcommand("ai", aiCommand);
+        commandLine.addSubcommand("report", reportCommand);
 
         // 设置命令名称
         commandLine.setCommandName("fund-cli");
@@ -200,11 +200,11 @@ public class FundCliApplication implements CommandLineRunner, ExitCodeGenerator 
             System.out.println("              sync compensate           补偿缺失历史数据");
             System.out.println("              sync all                  执行全部同步任务");
             System.out.println();
-            System.out.println("  ai          AI 数据分析（面向外部 Agent）");
-            System.out.println("              ai market                 市场概览（大盘+板块）");
-            System.out.println("              ai diagnose <code>        单只基金诊断数据");
-            System.out.println("              ai risk                   持仓风险分析报告");
-            System.out.println("              ai positions              持仓客观指标数据");
+            System.out.println("  report      数据分析报告（面向外部 Agent）");
+            System.out.println("              report market                 市场概览（大盘+板块）");
+            System.out.println("              report diagnose <code>        单只基金诊断数据");
+            System.out.println("              report risk                   持仓风险分析报告");
+            System.out.println("              report positions              持仓客观指标数据");
             System.out.println();
             System.out.println("全局选项:");
             System.out.println("  --no-color  禁用颜色输出");

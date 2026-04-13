@@ -1,6 +1,6 @@
 package com.qoder.fund.service;
 
-import com.qoder.fund.dto.AiFundDiagnosisDTO;
+import com.qoder.fund.dto.FundDiagnosisDTO;
 import com.qoder.fund.datasource.TiantianFundDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,8 +42,8 @@ public class FundDiagnosisService {
      * 获取基金诊断报告
      * 结果缓存1小时
      */
-    @Cacheable(value = "aiFundDiagnosis", key = "#fundCode", unless = "#result == null", cacheManager = "aiCacheManager")
-    public AiFundDiagnosisDTO getFundDiagnosis(String fundCode) {
+    @Cacheable(value = "aiFundDiagnosis", key = "#fundCode", unless = "#result == null", cacheManager = "analysisCacheManager")
+    public FundDiagnosisDTO getFundDiagnosis(String fundCode) {
         log.info("开始生成基金诊断报告: {}", fundCode);
         long startTime = System.currentTimeMillis();
 
@@ -56,7 +56,7 @@ public class FundDiagnosisService {
             }
 
             // 2. 构建诊断报告
-            AiFundDiagnosisDTO diagnosis = buildDiagnosis(fundCode, fundData);
+            FundDiagnosisDTO diagnosis = buildDiagnosis(fundCode, fundData);
 
             log.info("基金诊断报告生成完成: {}, 耗时: {}ms", fundCode,
                     System.currentTimeMillis() - startTime);
@@ -73,8 +73,8 @@ public class FundDiagnosisService {
      * 构建诊断报告
      */
     @SuppressWarnings("unchecked")
-    private AiFundDiagnosisDTO buildDiagnosis(String fundCode, Map<String, Object> fundData) {
-        AiFundDiagnosisDTO diagnosis = new AiFundDiagnosisDTO();
+    private FundDiagnosisDTO buildDiagnosis(String fundCode, Map<String, Object> fundData) {
+        FundDiagnosisDTO diagnosis = new FundDiagnosisDTO();
         diagnosis.setFundCode(fundCode);
         diagnosis.setFundName((String) fundData.getOrDefault("fundName", "未知"));
         diagnosis.setDiagnosisTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
@@ -113,7 +113,7 @@ public class FundDiagnosisService {
         diagnosis.setSummary(generateSummary(fundData, performance, overallScore.intValue()));
 
         // 6. 设置维度评分
-        AiFundDiagnosisDTO.DimensionScores dimensionScores = new AiFundDiagnosisDTO.DimensionScores();
+        FundDiagnosisDTO.DimensionScores dimensionScores = new FundDiagnosisDTO.DimensionScores();
         dimensionScores.setPerformance(performanceScore);
         dimensionScores.setRisk(riskScore);
         dimensionScores.setValuation(valuationScore);
@@ -346,9 +346,9 @@ public class FundDiagnosisService {
     /**
      * 生成估值分析
      */
-    private AiFundDiagnosisDTO.ValuationAnalysis generateValuationAnalysis(
+    private FundDiagnosisDTO.ValuationAnalysis generateValuationAnalysis(
             Map<String, BigDecimal> performance, int score) {
-        AiFundDiagnosisDTO.ValuationAnalysis valuation = new AiFundDiagnosisDTO.ValuationAnalysis();
+        FundDiagnosisDTO.ValuationAnalysis valuation = new FundDiagnosisDTO.ValuationAnalysis();
 
         BigDecimal month1 = performance.getOrDefault("1month", BigDecimal.ZERO);
 
@@ -372,9 +372,9 @@ public class FundDiagnosisService {
     /**
      * 生成业绩分析
      */
-    private AiFundDiagnosisDTO.PerformanceAnalysis generatePerformanceAnalysis(
+    private FundDiagnosisDTO.PerformanceAnalysis generatePerformanceAnalysis(
             Map<String, BigDecimal> performance, int score) {
-        AiFundDiagnosisDTO.PerformanceAnalysis perfAnalysis = new AiFundDiagnosisDTO.PerformanceAnalysis();
+        FundDiagnosisDTO.PerformanceAnalysis perfAnalysis = new FundDiagnosisDTO.PerformanceAnalysis();
 
         BigDecimal year1 = performance.getOrDefault("1year", BigDecimal.ZERO);
         BigDecimal year3 = performance.getOrDefault("3year", BigDecimal.ZERO);
@@ -420,8 +420,8 @@ public class FundDiagnosisService {
     /**
      * 生成风险分析
      */
-    private AiFundDiagnosisDTO.RiskAnalysis generateRiskAnalysis(Map<String, Object> fundData, int score) {
-        AiFundDiagnosisDTO.RiskAnalysis risk = new AiFundDiagnosisDTO.RiskAnalysis();
+    private FundDiagnosisDTO.RiskAnalysis generateRiskAnalysis(Map<String, Object> fundData, int score) {
+        FundDiagnosisDTO.RiskAnalysis risk = new FundDiagnosisDTO.RiskAnalysis();
 
         int riskLevel = (int) fundData.getOrDefault("riskLevel", 3);
         BigDecimal maxDrawdown = (BigDecimal) fundData.getOrDefault("maxDrawdown", BigDecimal.ZERO);
@@ -448,9 +448,9 @@ public class FundDiagnosisService {
     /**
      * 生成持仓建议
      */
-    private AiFundDiagnosisDTO.PositionAdvice generatePositionAdvice(
+    private FundDiagnosisDTO.PositionAdvice generatePositionAdvice(
             int overallScore, Map<String, BigDecimal> performance, Map<String, Object> fundData) {
-        AiFundDiagnosisDTO.PositionAdvice advice = new AiFundDiagnosisDTO.PositionAdvice();
+        FundDiagnosisDTO.PositionAdvice advice = new FundDiagnosisDTO.PositionAdvice();
 
         BigDecimal year1 = performance.getOrDefault("1year", BigDecimal.ZERO);
 
@@ -553,8 +553,8 @@ public class FundDiagnosisService {
     /**
      * 创建降级诊断报告
      */
-    private AiFundDiagnosisDTO createFallbackDiagnosis(String fundCode) {
-        AiFundDiagnosisDTO diagnosis = new AiFundDiagnosisDTO();
+    private FundDiagnosisDTO createFallbackDiagnosis(String fundCode) {
+        FundDiagnosisDTO diagnosis = new FundDiagnosisDTO();
         diagnosis.setFundCode(fundCode);
         diagnosis.setFundName("未知");
         diagnosis.setDiagnosisTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
@@ -563,7 +563,7 @@ public class FundDiagnosisService {
         diagnosis.setConfidenceLevel(3);
         diagnosis.setSummary("暂时无法获取基金诊断数据，请稍后重试。");
 
-        AiFundDiagnosisDTO.DimensionScores scores = new AiFundDiagnosisDTO.DimensionScores();
+        FundDiagnosisDTO.DimensionScores scores = new FundDiagnosisDTO.DimensionScores();
         scores.setValuation(50);
         scores.setPerformance(50);
         scores.setRisk(50);
@@ -571,7 +571,7 @@ public class FundDiagnosisService {
         scores.setCost(50);
         diagnosis.setDimensionScores(scores);
 
-        AiFundDiagnosisDTO.PositionAdvice advice = new AiFundDiagnosisDTO.PositionAdvice();
+        FundDiagnosisDTO.PositionAdvice advice = new FundDiagnosisDTO.PositionAdvice();
         advice.setSuggestion("观望");
         advice.setReason("数据暂时不可用，建议等待完整分析后再做决策");
         advice.setSuggestedRatio(new BigDecimal("5"));

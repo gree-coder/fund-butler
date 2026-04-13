@@ -512,34 +512,34 @@ CREATE TABLE watchlist (
 
 ---
 
-## 5.6 AI 数据分析 API
+## 5.6 数据分析报告 API
 
-#### GET /api/ai/market-overview
+#### GET /api/report/market-overview
 
 市场概览，包含大盘指数、板块涨跌、近期走势、市场情绪分析。
 
-#### GET /api/ai/diagnosis/{code}
+#### GET /api/report/diagnosis/{code}
 
-基金智能诊断，多维度评分（业绩、风险、估值、稳定性、费率）。
+基金诊断报告，多维度评分（业绩、风险、估值、稳定性、费率），基于规则引擎生成。
 
-#### GET /api/ai/risk-warning
+#### GET /api/report/risk-warning
 
 持仓风险预警，组合级风险评估（集中度、行业分散、估值健康度）。
 
-#### GET /api/ai/rebalance-timing
+#### GET /api/report/rebalance-timing
 
 调仓时机数据，基于历史业绩与实时指标双维度分析。
 
-### CLI AI 命令
+### CLI 数据分析报告命令
 
 | 命令 | 说明 | 输出 |
 |------|------|------|
-| `ai market` | 市场概览（大盘+板块+近期走势） | JSON（剔除主观建议） |
-| `ai diagnose <code>` | 单只基金诊断 | JSON（剔除主观建议） |
-| `ai risk` | 持仓风险分析 | JSON（剔除主观建议） |
-| `ai positions` | 持仓客观指标 | JSON |
+| `report market` | 市场概览（大盘+板块+近期走势） | JSON（剔除主观建议） |
+| `report diagnose <code>` | 单只基金诊断 | JSON（剔除主观建议） |
+| `report risk` | 持仓风险分析 | JSON（剔除主观建议） |
+| `report positions` | 持仓客观指标 | JSON |
 
-> **设计原则**：CLI 仅作为数据供给层，输出客观事实性指标，不输出任何主观建议，决策权交给外部 Agent。
+> **设计原则**：CLI 仅作为数据供给层，输出客观事实性指标，不输出任何主观建议，决策权交给外部 Agent。所有分析基于规则引擎 + 外部 API 数据，不涉及 LLM。
 
 ---
 

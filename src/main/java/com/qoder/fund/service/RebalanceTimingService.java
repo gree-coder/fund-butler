@@ -52,7 +52,7 @@ public class RebalanceTimingService {
      * 获取调仓时机提醒
      * 结果缓存15分钟（调仓建议需要较频繁更新）
      */
-    @Cacheable(value = "rebalanceTiming", key = "'current'", unless = "#result == null", cacheManager = "aiCacheManager")
+    @Cacheable(value = "rebalanceTiming", key = "'current'", unless = "#result == null", cacheManager = "analysisCacheManager")
     public RebalanceTimingDTO getRebalanceTiming() {
         log.info("开始生成调仓时机提醒");
         long startTime = System.currentTimeMillis();

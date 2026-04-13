@@ -1,29 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Spin, Alert, Tag, Progress, Row, Col, Statistic, List, Typography, Space, Divider, Badge } from 'antd';
 import { RobotOutlined, WarningOutlined, CheckCircleOutlined, InfoCircleOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
-import { fundApi, type AiFundDiagnosis } from '../../api/fund';
+import { fundApi, type FundDiagnosis } from '../../api/fund';
 
 
 const { Title, Text, Paragraph } = Typography;
 
-interface AiDiagnosisTabProps {
+interface DiagnosisTabProps {
   fundCode: string;
 }
 
-const AiDiagnosisTab: React.FC<AiDiagnosisTabProps> = ({ fundCode }) => {
-  const [diagnosis, setDiagnosis] = useState<AiFundDiagnosis | null>(null);
+const DiagnosisTab: React.FC<DiagnosisTabProps> = ({ fundCode }) => {
+  const [diagnosis, setDiagnosis] = useState<FundDiagnosis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fundApi.getAiDiagnosis(fundCode)
+    fundApi.getDiagnosis(fundCode)
       .then((data) => {
         setDiagnosis(data);
       })
       .catch((err) => {
-        setError(err.message || '获取AI诊断报告失败');
+        setError(err.message || '获取诊断报告失败');
       })
       .finally(() => {
         setLoading(false);
@@ -36,7 +36,7 @@ const AiDiagnosisTab: React.FC<AiDiagnosisTabProps> = ({ fundCode }) => {
         <Spin size="large" />
         <div style={{ marginTop: 16, color: '#666' }}>
           <RobotOutlined style={{ marginRight: 8 }} />
-          AI 正在分析基金数据，请稍候...
+          正在分析基金数据，请稍候...
         </div>
       </Card>
     );
@@ -45,7 +45,7 @@ const AiDiagnosisTab: React.FC<AiDiagnosisTabProps> = ({ fundCode }) => {
   if (error || !diagnosis) {
     return (
       <Alert
-        message="AI 诊断暂时不可用"
+        message="诊断暂时不可用"
         description={error || '无法获取诊断报告'}
         type="warning"
         showIcon
@@ -296,10 +296,10 @@ const AiDiagnosisTab: React.FC<AiDiagnosisTabProps> = ({ fundCode }) => {
 
       <div style={{ textAlign: 'center', color: '#999', fontSize: 12 }}>
         <InfoCircleOutlined style={{ marginRight: 4 }} />
-        AI 诊断报告仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+        诊断报告基于规则引擎和公开数据生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
       </div>
     </div>
   );
 };
 
-export default AiDiagnosisTab;
+export default DiagnosisTab;

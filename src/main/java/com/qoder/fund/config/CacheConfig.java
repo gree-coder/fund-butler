@@ -49,7 +49,7 @@ public class CacheConfig {
     }
 
     /**
-     * 热数据缓存管理器（用户持仓、自选基金实时估值、AI分析）
+     * 热数据缓存管理器（用户持仓、自选基金实时估值）
      */
     @Bean("hotCacheManager")
     public CacheManager hotCacheManager() {
@@ -58,10 +58,10 @@ public class CacheConfig {
     }
 
     /**
-     * AI分析缓存管理器（调仓建议等，15分钟过期）
+     * 数据分析缓存管理器（诊断报告、调仓建议等，15分钟过期）
      */
-    @Bean("aiCacheManager")
-    public CacheManager aiCacheManager() {
+    @Bean("analysisCacheManager")
+    public CacheManager analysisCacheManager() {
         return createCacheManager(900, 200,
                 "aiFundDiagnosis", "rebalanceTiming", "positionRiskWarning");
     }

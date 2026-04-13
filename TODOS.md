@@ -191,27 +191,27 @@
 
 ---
 
-## 阶段六：AI 能力模块
+## 阶段六：数据分析能力模块
 
-### Task 6.1 - AI 服务层
+### Task 6.1 - 数据分析服务层
 - [x] `MarketOverviewService`：市场概览（大盘指数 + 板块涨跌 + 近期走势 + 情绪分析）
 - [x] `FundDiagnosisService`：基金智能诊断（多维度评分、估值分析、业绩分析）
 - [x] `PositionRiskWarningService`：持仓风险预警（组合级风险评估）
 - [x] `RebalanceTimingService`：调仓时机提醒
 
-### Task 6.2 - AI 数据源
+### Task 6.2 - 数据分析数据源
 - [x] `MarketDataSource`：大盘指数实时行情 + 新浪K线走势
 - [x] `SectorDataSource`：板块涨跌排行
 - [x] `TiantianFundDataSource`：天天基金详情数据
 
-### Task 6.3 - AI CLI 命令
-- [x] `AiCommand`：4个子命令（market/diagnose/risk/positions）
+### Task 6.3 - 数据分析 CLI 命令
+- [x] `ReportCommand`：4个子命令（market/diagnose/risk/positions）
 - [x] 剔除主观建议字段，仅输出客观事实性指标
 - [x] JSON 格式输出，方便外部 Agent 解析
 
-### Task 6.4 - AI Web API + 前端
-- [x] `AiAnalysisController`、`MarketOverviewController`、`PositionRiskController`、`RebalanceTimingController`
-- [x] 前端组件：MarketOverviewCard、RiskWarningCard、RebalanceTimingCard、AiDiagnosisTab
+### Task 6.4 - 数据分析 Web API + 前端
+- [x] `ReportController`、`MarketOverviewController`、`PositionRiskController`、`RebalanceTimingController`
+- [x] 前端组件：MarketOverviewCard、RiskWarningCard、RebalanceTimingCard、DiagnosisTab
 
 ---
 
@@ -250,7 +250,7 @@
 | 阶段三：后端业务API | 5 | 中 |
 | 阶段四：前端页面 | 5 | 中 |
 | 阶段五：联调完善 | 3 | 中 |
-| 阶段六：AI 能力模块 | 4 | 高 |
+| 阶段六：数据分析能力模块 | 4 | 高 |
 | **合计** | **23** | |
 
 > **核心难点**：阶段二的外部数据采集是整个项目的基础设施，特别是多数据源验证和股票估值兜底策略，需要投入较多精力确保数据准确性和稳定性。

@@ -29,7 +29,7 @@
 - **CLI 支持**：命令行工具，支持定时任务和数据同步
 - **数据聚合**：汇总多平台持仓，一屏掌握投资全貌
 - **智能分析**：提供专业级收益归因、风险分析和资产配置建议
-- **AI 数据供给**：面向外部 Agent 的标准化数据接口，输出客观指标供智能决策
+- **数据分析供给**：面向外部 Agent 的标准化数据接口，输出客观指标供智能决策
 - **实时估值**：多数据源实时估值，交易日盘中动态更新
 - **精确计算**：收益分析算法精确处理交易记录，排除本金变动干扰，真实反映投资收益
 
@@ -49,9 +49,9 @@
 - [x] **资产配置** - 按行业分布展示资产配置饼图
 - [x] **收益分析** - 收益曲线、回撤分析、夏普比率、胜率统计（精确算法，正确处理交易记录）
 - [x] **CLI 工具** - 命令行接口，支持定时任务、数据同步、收益播报
-- [x] **AI 数据分析** - 面向外部 Agent 的数据供给接口（市场概览、基金诊断、风险预警、持仓指标）
+- [x] **数据分析报告** - 面向外部 Agent 的数据供给接口（市场概览、基金诊断、风险预警、持仓指标）
 - [x] **市场概览** - 大盘指数实时行情 + 近5日K线走势 + 板块涨跌排行
-- [x] **基金智能诊断** - 多维度评分（业绩、风险、估值、稳定性、费率）
+- [x] **基金智能诊断** - 多维度评分（业绩、风险、估值、稳定性、费率）（规则引擎）
 - [x] **持仓风险预警** - 组合级风险检测（集中度、行业分散、估值健康度）
 - [x] **日志系统** - 分级日志、请求日志、API 日志拦截器
 
@@ -176,11 +176,11 @@ java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast           # 播
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --brief   # 简洁模式
 java -jar target/fund-0.0.1-SNAPSHOT-cli.jar dashboard broadcast --json    # JSON 格式
 
-# AI 数据分析（面向外部 Agent，输出 JSON 格式客观数据）
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar ai market              # 市场概览（大盘+板块+近期走势）
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar ai diagnose 161725     # 单只基金诊断
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar ai risk                # 持仓风险分析
-java -jar target/fund-0.0.1-SNAPSHOT-cli.jar ai positions           # 持仓客观指标
+# 数据分析报告（面向外部 Agent，输出 JSON 格式客观数据）
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report market              # 市场概览（大盘+板块+近期走势）
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report diagnose 161725     # 单只基金诊断
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report risk                # 持仓风险分析
+java -jar target/fund-0.0.1-SNAPSHOT-cli.jar report positions           # 持仓客观指标
 
 # 或使用脚本
 ./scripts/fund-cli fund search 白酒
@@ -201,7 +201,7 @@ fund/
 │   ├── config/                      # 配置类
 │   ├── datasource/                  # 数据源（多源估值 + 市场数据）
 │   ├── scheduler/                   # 定时任务
-│   └── cli/                         # CLI 命令行工具（含 AI 数据供给）
+│   └── cli/                         # CLI 命令行工具（含数据分析报告）
 ├── src/main/resources/
 │   ├── db/                          # 数据库脚本
 │   │   ├── schema.sql               # 表结构
@@ -239,10 +239,10 @@ fund/
 | `/api/dashboard` | GET | 首页数据 |
 | `/api/dashboard/profit-analysis` | GET | 收益分析（曲线+回撤） |
 | `/api/accounts` | GET/POST | 账户列表/创建 |
-| `/api/ai/market-overview` | GET | 市场概览（大盘+板块+走势） |
-| `/api/ai/diagnosis/{code}` | GET | 基金智能诊断 |
-| `/api/ai/risk-warning` | GET | 持仓风险预警 |
-| `/api/ai/rebalance-timing` | GET | 调仓时机数据 |
+| `/api/report/market-overview` | GET | 市场概览（大盘+板块+走势） |
+| `/api/report/diagnosis/{code}` | GET | 基金诊断报告 |
+| `/api/report/risk-warning` | GET | 持仓风险预警 |
+| `/api/report/rebalance-timing` | GET | 调仓时机数据 |
 
 详细 API 文档请参考 [SPEC.md](./SPEC.md)
 

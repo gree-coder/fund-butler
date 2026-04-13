@@ -25,29 +25,29 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 /**
- * AI 数据分析 CLI 命令
+ * 数据分析报告 CLI 命令
  * 面向外部 Agent 提供客观数据供给，仅输出事实性指标，不输出主观建议
  *
  * 使用方式:
- *   fund-cli ai market              获取市场概览（大盘指数 + 板块涨跌）
- *   fund-cli ai diagnose <code>     获取单只基金诊断数据
- *   fund-cli ai risk                获取持仓风险分析报告
- *   fund-cli ai positions           获取持仓客观指标数据
+ *   fund-cli report market              获取市场概览（大盘指数 + 板块涨跌）
+ *   fund-cli report diagnose <code>     获取单只基金诊断数据
+ *   fund-cli report risk                获取持仓风险分析报告
+ *   fund-cli report positions           获取持仓客观指标数据
  */
 @Component
 @CommandLine.Command(
-        name = "ai",
-        aliases = {"analysis"},
-        description = "AI 数据分析（面向外部 Agent 的数据供给接口）",
+        name = "report",
+        aliases = {"rpt"},
+        description = "数据分析报告（面向外部 Agent 的数据供给接口）",
         subcommands = {
-                AiCommand.MarketCommand.class,
-                AiCommand.DiagnoseCommand.class,
-                AiCommand.RiskCommand.class,
-                AiCommand.PositionsCommand.class
+                ReportCommand.MarketCommand.class,
+                ReportCommand.DiagnoseCommand.class,
+                ReportCommand.RiskCommand.class,
+                ReportCommand.PositionsCommand.class
         }
 )
 @RequiredArgsConstructor
-public class AiCommand implements Callable<Integer> {
+public class ReportCommand implements Callable<Integer> {
 
     @CommandLine.Spec
     private CommandLine.Model.CommandSpec spec;
@@ -55,7 +55,7 @@ public class AiCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         System.out.println();
-        System.out.println("AI 数据分析 - 面向外部 Agent 的数据供给接口");
+        System.out.println("数据分析报告 - 面向外部 Agent 的数据供给接口");
         System.out.println("==================================================");
         System.out.println();
         System.out.println("可用子命令:");
@@ -68,10 +68,10 @@ public class AiCommand implements Callable<Integer> {
         System.out.println("数据仅包含客观事实性指标，不包含主观投资建议。");
         System.out.println();
         System.out.println("示例:");
-        System.out.println("  fund-cli ai market");
-        System.out.println("  fund-cli ai diagnose 161725");
-        System.out.println("  fund-cli ai risk");
-        System.out.println("  fund-cli ai positions");
+        System.out.println("  fund-cli report market");
+        System.out.println("  fund-cli report diagnose 161725");
+        System.out.println("  fund-cli report risk");
+        System.out.println("  fund-cli report positions");
         System.out.println();
         return 0;
     }
@@ -202,7 +202,7 @@ public class AiCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                AiFundDiagnosisDTO diagnosis = fundDiagnosisService.getFundDiagnosis(fundCode);
+                FundDiagnosisDTO diagnosis = fundDiagnosisService.getFundDiagnosis(fundCode);
 
                 if (diagnosis == null) {
                     System.err.println("无法获取基金诊断数据: " + fundCode);

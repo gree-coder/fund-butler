@@ -65,8 +65,8 @@ export interface RefreshResult {
   estimates: EstimateSourceData;
 }
 
-// AI 基金诊断报告接口
-export interface AiFundDiagnosis {
+// 基金诊断报告接口
+export interface FundDiagnosis {
   fundCode: string;
   fundName: string;
   diagnosisTime: string;
@@ -126,7 +126,7 @@ export const fundApi = {
   refreshData: (code: string): Promise<RefreshResult> =>
     client.post(`/fund/${code}/refresh`),
 
-  // AI 诊断接口
-  getAiDiagnosis: (code: string): Promise<AiFundDiagnosis> =>
-    client.get(`/ai/fund/${code}/diagnosis`),
+  // 诊断接口
+  getDiagnosis: (code: string): Promise<FundDiagnosis> =>
+    client.get(`/report/fund/${code}/diagnosis`),
 };

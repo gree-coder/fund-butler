@@ -10,7 +10,7 @@ import { formatAmount, formatPercent, formatNav, getProfitColor, formatFundType,
 import PriceChange from '../../components/PriceChange';
 import PageSkeleton from '../../components/PageSkeleton';
 import { EstimateAnalysisTab } from './EstimateAnalysisTab';
-import AiDiagnosisTab from './AiDiagnosisTab';
+import DiagnosisTab from './DiagnosisTab';
 
 const PERIODS = [
   { label: '近1月', value: '1m' },
@@ -378,10 +378,10 @@ const FundDetail: React.FC = () => {
             label: (
               <span>
                 <RobotOutlined style={{ marginRight: 4 }} />
-                AI 诊断
+                基金诊断
               </span>
             ),
-            children: <AiDiagnosisTab fundCode={code!} />,
+            children: <DiagnosisTab fundCode={code!} />,
           },
         ]}
       />

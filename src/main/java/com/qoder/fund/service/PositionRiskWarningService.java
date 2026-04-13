@@ -44,7 +44,7 @@ public class PositionRiskWarningService {
      * 获取持仓风险预警报告
      * 结果缓存5分钟
      */
-    @Cacheable(value = "positionRiskWarning", key = "'current'", unless = "#result == null", cacheManager = "aiCacheManager")
+    @Cacheable(value = "positionRiskWarning", key = "'current'", unless = "#result == null", cacheManager = "analysisCacheManager")
     public PositionRiskWarningDTO getRiskWarning() {
         log.info("开始生成持仓风险预警报告");
         long startTime = System.currentTimeMillis();
