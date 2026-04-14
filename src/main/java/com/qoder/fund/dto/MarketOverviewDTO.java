@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 市场概览 DTO
@@ -41,6 +42,11 @@ public class MarketOverviewDTO {
      * 领跌板块
      */
     private List<SectorData> decliningSectors;
+
+    /**
+     * 一级行业板块分类聚合 [{category, avgChangePercent, sectorCount, sectors}]
+     */
+    private List<Map<String, Object>> sectorCategories;
 
     /**
      * 大盘指数近期走势（近N个交易日）
@@ -122,6 +128,16 @@ public class MarketOverviewDTO {
          * 趋势: up/down
          */
         private String trend;
+
+        /**
+         * 近5日涨跌幅(%)
+         */
+        private BigDecimal change5d;
+
+        /**
+         * 近10日涨跌幅(%)
+         */
+        private BigDecimal change10d;
     }
 
     /**

@@ -3,6 +3,7 @@ package com.qoder.fund.dto;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 持仓风险预警报告 DTO
@@ -44,6 +45,16 @@ public class PositionRiskWarningDTO {
      * 优化建议
      */
     private List<OptimizationSuggestion> suggestions;
+
+    /**
+     * 基金类型分布 [{category, count, marketValue, ratio}]
+     */
+    private List<Map<String, Object>> categoryDistribution;
+
+    /**
+     * 板块(行业)分布 [{sector, marketValue, ratio}]
+     */
+    private List<Map<String, Object>> sectorDistribution;
 
     /**
      * 风险项

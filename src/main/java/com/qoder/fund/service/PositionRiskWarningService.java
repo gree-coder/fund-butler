@@ -13,6 +13,8 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -86,6 +88,12 @@ public class PositionRiskWarningService {
 
             // 7. 生成优化建议
             warning.setSuggestions(generateSuggestions(risks, positions));
+
+            // 8. 计算基金类型分布
+            warning.setCategoryDistribution(calculateCategoryDistribution(positions, dashboard.getTotalAsset()));
+
+            // 9. 板块(行业)分布：复用 Dashboard 已计算的行业分布，重命名字段
+            warning.setSectorDistribution(buildSectorDistribution(dashboard.getIndustryDistribution()));
 
             log.info("持仓风险预警报告生成完成，风险项: {}, 耗时: {}ms",
                     risks.size(), System.currentTimeMillis() - startTime);
@@ -510,6 +518,147 @@ public class PositionRiskWarningService {
                 (industryScore + concentrationScore + riskBalanceScore + valuationScore) / 4);
 
         return metrics;
+    }
+
+    /**
+     * 计算基金类型分布（按市值加权）
+     */
+    private List<Map<String, Object>> calculateCategoryDistribution(
+            List<PositionDTO> positions, BigDecimal totalAsset) {
+        // 按基金类型分组聚合市值和数量
+        Map<String, BigDecimal> categoryMarketValue = new HashMap<>();
+        Map<String, Integer> categoryCount = new HashMap<>();
+
+        for (PositionDTO p : positions) {
+            String type = p.getFundType() != null ? p.getFundType() : "OTHER";
+            categoryCount.merge(type, 1, Integer::sum);
+            if (p.getMarketValue() != null) {
+                categoryMarketValue.merge(type, p.getMarketValue(), BigDecimal::add);
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : categoryCount.entrySet()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("category", entry.getKey());
+            item.put("count", entry.getValue());
+            BigDecimal mv = categoryMarketValue.getOrDefault(entry.getKey(), BigDecimal.ZERO);
+            item.put("marketValue", mv.setScale(2, RoundingMode.HALF_UP));
+            if (totalAsset != null && totalAsset.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal ratio = mv.multiply(new BigDecimal("100"))
+                        .divide(totalAsset, 2, RoundingMode.HALF_UP);
+                item.put("ratio", ratio);
+            } else {
+                item.put("ratio", BigDecimal.ZERO);
+            }
+            result.add(item);
+        }
+
+        // 按市值降序排序
+        result.sort((a, b) -> {
+            BigDecimal va = (BigDecimal) a.get("marketValue");
+            BigDecimal vb = (BigDecimal) b.get("marketValue");
+            return vb.compareTo(va);
+        });
+
+        return result;
+    }
+
+    /**
+     * 板块→一级行业分类关键词规则（与 MarketOverviewService 保持一致）
+     */
+    private static final String[][] SECTOR_CATEGORY_RULES = {
+            {"科技", "半导体", "芯片", "集成电路", "人工智能", "软件", "IT", "计算机", "互联网",
+                    "通信", "电子", "光电", "数字", "网络", "云计算", "物联网", "大数据", "区块链",
+                    "媒体", "广告", "电商", "印制电路", "元件", "LED", "游戏"},
+            {"医药", "医", "药", "生物制品", "疫苗", "诊断", "医美"},
+            {"金融", "银行", "保险", "证券", "金融", "信托", "期货"},
+            {"消费", "酒", "食品", "饮料", "家电", "零售", "汽车", "旅游", "纺织", "服装",
+                    "家居", "教育", "消费", "美容", "护理", "体育", "厨房", "制冷", "影视",
+                    "酒店", "餐饮", "乳品", "调味", "休闲", "宠物"},
+            {"能源", "煤", "石油", "天然气", "电力", "能源", "光伏", "风电", "储能", "电池",
+                    "电源", "火电", "燃气", "核电", "水电"},
+            {"资源", "金属", "黄金", "铜", "铝", "镍", "钴", "锂", "稀土", "矿"},
+            {"制造", "机械", "设备", "钢铁", "化工", "军工", "航空", "航天", "国防", "船舶",
+                    "工程", "仪器", "仪表", "印刷", "玻纤", "胶", "磨具", "自动化", "激光",
+                    "工业", "建材"},
+            {"周期", "房地产", "地产", "建筑", "物业", "房产", "住宅",
+                    "航运", "公路", "铁路", "机场", "港口", "物流", "运输", "快递",
+                    "环保", "水务", "园林", "供水",
+                    "农", "养殖", "饲料", "种业", "畜", "渔", "林业", "食用菌"}
+    };
+
+    private static String classifySector(String sectorName) {
+        if (sectorName == null || sectorName.isEmpty()) {
+            return "其他";
+        }
+        for (String[] rule : SECTOR_CATEGORY_RULES) {
+            String category = rule[0];
+            for (int i = 1; i < rule.length; i++) {
+                if (sectorName.contains(rule[i])) {
+                    return category;
+                }
+            }
+        }
+        return "其他";
+    }
+
+    /**
+     * 构建板块分布：将细分行业聚合为6-8个一级大类
+     */
+    private List<Map<String, Object>> buildSectorDistribution(List<Map<String, Object>> industryDistribution) {
+        if (industryDistribution == null || industryDistribution.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 按一级分类聚合市值
+        Map<String, BigDecimal> categoryMarketValue = new LinkedHashMap<>();
+        BigDecimal totalMarketValue = BigDecimal.ZERO;
+
+        for (Map<String, Object> ind : industryDistribution) {
+            String industry = String.valueOf(ind.get("industry"));
+            BigDecimal mv = toBigDecimal(ind.get("marketValue"));
+            String category = classifySector(industry);
+            categoryMarketValue.merge(category, mv, BigDecimal::add);
+            totalMarketValue = totalMarketValue.add(mv);
+        }
+
+        // 构建结果
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, BigDecimal> entry : categoryMarketValue.entrySet()) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("category", entry.getKey());
+            item.put("marketValue", entry.getValue().setScale(2, RoundingMode.HALF_UP));
+            BigDecimal ratio = totalMarketValue.compareTo(BigDecimal.ZERO) > 0
+                    ? entry.getValue().multiply(new BigDecimal("100"))
+                            .divide(totalMarketValue, 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            item.put("ratio", ratio);
+            result.add(item);
+        }
+
+        // 按市值降序
+        result.sort((a, b) -> {
+            BigDecimal va = (BigDecimal) a.get("marketValue");
+            BigDecimal vb = (BigDecimal) b.get("marketValue");
+            return vb.compareTo(va);
+        });
+
+        return result;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value instanceof BigDecimal) {
+            return (BigDecimal) value;
+        }
+        try {
+            return new BigDecimal(value.toString());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
     }
 
     /**

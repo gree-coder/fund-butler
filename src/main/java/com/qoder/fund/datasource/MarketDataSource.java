@@ -29,12 +29,20 @@ public class MarketDataSource {
     // 新浪K线历史API
     private static final String SINA_KLINE_API = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData";
 
-    // 大盘指数代码映射
+    // A股大盘指数代码映射（新浪简化格式）
     private static final String[][] INDEX_CODES = {
             {"s_sh000001", "上证指数"},
             {"s_sz399001", "深证成指"},
             {"s_sz399006", "创业板指"},
             {"s_sh000300", "沪深300"}
+    };
+
+    // 海外指数代码映射（新浪海外格式）
+    private static final String[][] OVERSEAS_INDEX_CODES = {
+            {"rt_hkHSI", "恒生指数", "hkHSI"},
+            {"rt_hkHSTECH", "恒生科技", "hkHSTECH"},
+            {"gb_$inx", "标普500", "gb_inx"},
+            {"gb_$ixic", "纳斯达克", "gb_ixic"}
     };
 
     public MarketDataSource(OkHttpClient httpClient) {
@@ -74,7 +82,14 @@ public class MarketDataSource {
                 indices = parseIndexData(body);
             }
         } catch (Exception e) {
-            log.error("获取大盘指数数据异常", e);
+            log.error("获取A股指数数据异常", e);
+        }
+
+        // 2. 获取海外指数（恒生/恒生科技/标普500/纳指）
+        try {
+            indices.addAll(fetchOverseasIndices());
+        } catch (Exception e) {
+            log.error("获取海外指数数据异常", e);
         }
 
         return indices;
@@ -137,7 +152,126 @@ public class MarketDataSource {
         return indices;
     }
 
-    // K线API使用的指数代码（不带s_前缀）
+    /**
+     * 获取海外指数数据（港股 + 美股）
+     * 港股格式: var hq_str_rt_hkHSI="HSI,恒生指数,22452.54,22213.26,...,239.28,1.08,..."
+     * 美股格式: var hq_str_gb_$inx="标普500指数,...,5650.38,...,88.01,1.58,..."
+     */
+    private List<MarketOverviewDTO.IndexData> fetchOverseasIndices() {
+        List<MarketOverviewDTO.IndexData> indices = new ArrayList<>();
+
+        StringBuilder codeList = new StringBuilder();
+        for (int i = 0; i < OVERSEAS_INDEX_CODES.length; i++) {
+            if (i > 0) {
+                codeList.append(",");
+            }
+            codeList.append(OVERSEAS_INDEX_CODES[i][0]);
+        }
+
+        try {
+            String url = String.format(SINA_INDEX_API, codeList.toString());
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+                    .header("Referer", "https://finance.sina.com.cn/")
+                    .build();
+
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    log.warn("获取海外指数数据失败: HTTP {}", response.code());
+                    return indices;
+                }
+
+                String body = new String(response.body().bytes(), Charset.forName("GBK"));
+
+                for (String[] indexInfo : OVERSEAS_INDEX_CODES) {
+                    String code = indexInfo[0];
+                    String name = indexInfo[1];
+                    String outputCode = indexInfo[2];
+
+                    try {
+                        MarketOverviewDTO.IndexData index = parseOverseasIndex(body, code, name, outputCode);
+                        if (index != null) {
+                            indices.add(index);
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析海外指数失败: code={}", code, e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("获取海外指数数据异常", e);
+        }
+
+        return indices;
+    }
+
+    /**
+     * 解析单个海外指数
+     * 港股(rt_hk*): 英文代码(0),中文名(1),当前点(2),昨收(3),最高(4),最低(5),当前点(6),涨跌点(7),涨跌%(8),...
+     * 美股(gb_$*): 名称(0),最新(1),涨跌点(2),时间(3),涨跌%(4),开盘(5),最高(6),最低(7),昨收(8),...
+     */
+    private MarketOverviewDTO.IndexData parseOverseasIndex(String body, String code, String name, String outputCode) {
+        String varName = "hq_str_" + code;
+        int startIdx = body.indexOf(varName);
+        if (startIdx < 0) {
+            return null;
+        }
+
+        int quoteStart = body.indexOf('"', startIdx);
+        int quoteEnd = body.indexOf('"', quoteStart + 1);
+        if (quoteStart < 0 || quoteEnd <= quoteStart) {
+            return null;
+        }
+
+        String content = body.substring(quoteStart + 1, quoteEnd);
+        String[] parts = content.split(",");
+
+        MarketOverviewDTO.IndexData index = new MarketOverviewDTO.IndexData();
+        index.setCode(outputCode);
+        index.setName(name);
+
+        if (code.startsWith("rt_hk")) {
+            // 港股指数: parts[2]=当前点, parts[7]=涨跌点, parts[8]=涨跌%
+            if (parts.length >= 9) {
+                index.setCurrentPoint(parseBigDecimal(parts[2]));
+                index.setChangePoint(parseBigDecimal(parts[7]));
+                index.setChangePercent(parseBigDecimal(parts[8]));
+                index.setVolume(0L);
+                index.setTurnover(0L);
+            } else {
+                return null;
+            }
+        } else if (code.startsWith("gb_")) {
+            // 美股指数: parts[1]=最新, parts[2]=涨跌%, parts[4]=涨跌点
+            if (parts.length >= 5) {
+                index.setCurrentPoint(parseBigDecimal(parts[1]));
+                index.setChangePoint(parseBigDecimal(parts[4]));
+                // 涨跌%可能带%符号，需去除
+                String pctStr = parts[2].replace("%", "").trim();
+                index.setChangePercent(parseBigDecimal(pctStr));
+                index.setVolume(0L);
+                index.setTurnover(0L);
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
+
+        // 判断趋势
+        if (index.getChangePercent().compareTo(BigDecimal.ZERO) > 0) {
+            index.setTrend("up");
+        } else if (index.getChangePercent().compareTo(BigDecimal.ZERO) < 0) {
+            index.setTrend("down");
+        } else {
+            index.setTrend("flat");
+        }
+
+        return index;
+    }
+
+    // K线API使用的指数代码（仅A股，不带s_前缀）
     private static final String[][] KLINE_INDEX_CODES = {
             {"sh000001", "上证指数"},
             {"sz399001", "深证成指"},

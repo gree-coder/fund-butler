@@ -1,7 +1,7 @@
 # 基金管家开发进度
 
 > Harness Engineering 进度跟踪文件
-> 最后更新: 2026-04-13 (CLI 数据供给接口增强：index_summary/重仓股表现/数据源准确度)
+> 最后更新: 2026-04-14 (CLI 数据供给增强：8大指数/板块行业聚合/多维度涨跌幅)
 
 ## 项目状态概览
 
@@ -57,8 +57,10 @@
 
 ### 数据分析能力模块
 - [x] **市场概览服务** (MarketOverviewService)
-  - [x] 大盘指数实时行情（上证、深证、创业板、沪深300）
+  - [x] 8大指数实时行情（A股4+港股2+美股2）
   - [x] 板块涨跌排行（领涨/领跌板块）
+  - [x] 一级行业板块聚合（科技/消费/医药/金融/制造/能源/资源/周期）
+  - [x] 板块多维度涨跌幅（今日/近5日/近10日）
   - [x] 大盘近期走势（新浪K线API，近5个交易日）
   - [x] 市场情绪分析、持仓影响分析
 - [x] **基金智能诊断** (FundDiagnosisService)
@@ -67,6 +69,8 @@
 - [x] **持仓风险预警** (PositionRiskWarningService)
   - [x] 组合级风险评估（集中度、行业分散、估值健康）
   - [x] 风险项检测、健康指标评分
+  - [x] 基金大类分布 (categoryDistribution: STOCK/MIXED/QDII)
+  - [x] 板块行业聚合分布 (sectorDistribution: 6-8个一级大类)
 - [x] **调仓时机提醒** (RebalanceTimingService)
   - [x] 历史业绩与实时双指标联合决策
 - [x] **数据分析 CLI 数据供给接口** (ReportCommand)
@@ -116,7 +120,11 @@
 
 | 日期 | 任务 | 提交 |
 |------|------|------|
-| 2026-04-13 | **CLI 数据供给增强**：`report market` index_summary 改用实时指数+leader/laggard 对象结构；`report positions` 新增 topHoldingsPerformance（重仓股今日表现+贡献度）、estimateReliability（数据源准确度 MAE+可靠性等级）、recent_trend 走势方向改用 3 日判断 | - |
+| 2026-04-14 | **板块行业多维度涨跌幅**：`report market` sectorCategories 新增 avgChange5d/avgChange10d（东方财富 f24/f25 字段），支持今日/近5日/近10日三维度分析 | - |
+| 2026-04-14 | **report risk 板块聚合**：sectorDistribution 从 30+ 细分板块聚合为 6-8 个一级大类（科技/消费/医药/金融/制造/能源/资源/周期），采用关键词模糊匹配策略 | - |
+| 2026-04-14 | **8大指数扩展**：大盘指数从 4 个 A 股扩展至 8 个（+恒生指数/恒生科技/标普500/纳斯达克），新增海外指数解析逻辑 | - |
+| 2026-04-14 | **report risk 双维度分布**：新增 categoryDistribution（基金大类 STOCK/MIXED/QDII）和 sectorDistribution（板块行业）两个字段 | - |
+| 2026-04-14 | **report market 一级行业聚合**：新增 sectorCategories 字段，将子板块聚合为科技/消费/医药等 11 个一级分类 | - |
 | 2026-04-13 | **命名重构**：将 `ai` 命令组重命名为 `report`，AiCommand→ReportCommand，AiFundDiagnosisDTO→FundDiagnosisDTO，/api/ai→/api/report，去除误导性 AI 命名 | - |
 | 2026-04-13 | **数据分析 CLI 数据供给接口**：新增 `report` 命令组（market/diagnose/risk/positions），面向外部 Agent 输出 JSON 格式客观数据，不含主观建议 | - |
 | 2026-04-13 | **大盘近期走势集成**：市场概览新增近5个交易日K线数据（新浪财经API），含开收高低、区间涨跌幅 | - |
@@ -146,7 +154,6 @@
 1. 完善单元测试覆盖
 2. 优化数据可视化效果
 3. 基金排行榜与筛选器
-4. 板块近期走势数据源探索
 
 ---
 

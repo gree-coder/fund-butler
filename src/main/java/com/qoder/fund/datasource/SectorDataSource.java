@@ -50,6 +50,13 @@ public class SectorDataSource {
     }
 
     /**
+     * 获取全量板块数据（用于一级行业聚合）
+     */
+    public List<MarketOverviewDTO.SectorData> getAllSectors() {
+        return getSectorsByChange("desc", 100);
+    }
+
+    /**
      * 获取板块数据（多数据源切换）
      * @param sort 排序方式: desc(涨幅从高到低) / asc(涨幅从低到高)
      * @param limit 返回数量
@@ -177,6 +184,14 @@ public class SectorDataSource {
             sector.setChangePercent(changePercent);
             sector.setLeadingStock(leadingStock);
             sector.setTrend(changePercent.compareTo(BigDecimal.ZERO) >= 0 ? "up" : "down");
+
+            // f24=近5日涨跌幅, f25=近10日涨跌幅（均需除以100）
+            BigDecimal change5d = parseBigDecimal(data.path("f24").asText("0"))
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal change10d = parseBigDecimal(data.path("f25").asText("0"))
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            sector.setChange5d(change5d);
+            sector.setChange10d(change10d);
 
             return sector;
         } catch (Exception e) {

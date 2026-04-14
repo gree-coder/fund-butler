@@ -204,6 +204,11 @@ public class ReportCommand implements Callable<Integer> {
                 // 不包含 portfolioImpact（含主观建议）
                 // 不包含 sentimentDescription（含主观描述）
 
+                // 一级行业板块聚合（客观数据）
+                if (overview.getSectorCategories() != null) {
+                    output.put("sectorCategories", overview.getSectorCategories());
+                }
+
                 System.out.println(toJson(output));
                 return 0;
 
@@ -381,6 +386,16 @@ public class ReportCommand implements Callable<Integer> {
 
                 // 不包含 suggestions（主观优化建议）
                 // 不包含 summary（主观摘要文本）
+
+                // 基金类型分布（客观数据）
+                if (warning.getCategoryDistribution() != null) {
+                    output.put("categoryDistribution", warning.getCategoryDistribution());
+                }
+
+                // 板块(行业)分布（客观数据）
+                if (warning.getSectorDistribution() != null) {
+                    output.put("sectorDistribution", warning.getSectorDistribution());
+                }
 
                 System.out.println(toJson(output));
                 return 0;

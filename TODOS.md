@@ -200,8 +200,8 @@
 - [x] `RebalanceTimingService`：调仓时机提醒
 
 ### Task 6.2 - 数据分析数据源
-- [x] `MarketDataSource`：大盘指数实时行情 + 新浪K线走势
-- [x] `SectorDataSource`：板块涨跌排行
+- [x] `MarketDataSource`：8大指数实时行情（A股4+港股2+美股2）+ 新浪K线走势
+- [x] `SectorDataSource`：板块涨跌排行 + 近5日/10日涨跌幅
 - [x] `TiantianFundDataSource`：天天基金详情数据
 
 ### Task 6.3 - 数据分析 CLI 命令
