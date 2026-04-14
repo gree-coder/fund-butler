@@ -6,13 +6,17 @@
 - [application.yml](file://src/main/resources/application.yml)
 - [FundDetail.tsx](file://fund-web/src/pages/Fund/FundDetail.tsx)
 - [EstimateAnalysisTab.tsx](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx)
+- [AiDiagnosisTab.tsx](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx)
 - [estimateAnalysis.ts](file://fund-web/src/api/estimateAnalysis.ts)
 - [AppLayout.tsx](file://fund-web/src/components/AppLayout.tsx)
 - [SearchResult.tsx](file://fund-web/src/pages/Fund/SearchResult.tsx)
 - [App.tsx](file://fund-web/src/App.tsx)
 - [FundController.java](file://src/main/java/com/qoder/fund/controller/FundController.java)
+- [AiAnalysisController.java](file://src/main/java/com/qoder/fund/controller/AiAnalysisController.java)
 - [EstimateAnalysisService.java](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java)
+- [FundDiagnosisService.java](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java)
 - [EstimateAnalysisDTO.java](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java)
+- [AiFundDiagnosisDTO.java](file://src/main/java/com/qoder/fund/dto/AiFundDiagnosisDTO.java)
 - [EstimatePredictionMapper.java](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java)
 - [FundService.java](file://src/main/java/com/qoder/fund/service/FundService.java)
 - [FundDataAggregator.java](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java)
@@ -29,6 +33,7 @@
 - [searchStore.ts](file://fund-web/src/store/searchStore.ts)
 - [PriceChange.tsx](file://fund-web/src/components/PriceChange.tsx)
 - [App.css](file://fund-web/src/App.css)
+- [CacheConfig.java](file://src/main/java/com/qoder/fund/config/CacheConfig.java)
 </cite>
 
 ## 更新摘要
@@ -41,6 +46,8 @@
 - 新增了板块涨跌幅显示功能
 - **新增数据源分析标签页**：集成EstimateAnalysisTab组件，提供详细的数据源分析功能
 - **增强数据分析能力**：支持数据源准确度统计、可信度评估和补偿记录追踪
+- **新增AI诊断标签页**：集成AiDiagnosisTab组件，提供详细的基金AI分析报告和风险评估
+- **增强AI诊断功能**：基于规则引擎的综合评分系统，提供多维度投资建议和风险评估
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -66,6 +73,7 @@
 - **导航持久性**：增强的路径跟踪机制，改善用户浏览体验
 - **智能估值**：多数据源估值切换，支持智能综合预估
 - **数据源分析**：详细的数据源准确度分析和可信度评估
+- **AI智能诊断**：基于规则引擎的综合评分系统，提供多维度投资建议
 
 ### 技术架构
 
@@ -113,13 +121,14 @@ BE_MAPPER --> DB_NAV
 
 **图表来源**
 - [AppLayout.tsx:1-127](file://fund-web/src/components/AppLayout.tsx#L1-L127)
-- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
+- [FundDetail.tsx:1-393](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L393)
+- [AiAnalysisController.java:1-40](file://src/main/java/com/qoder/fund/controller/AiAnalysisController.java#L1-L40)
 - [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
 - [FundDataAggregator.java:1-693](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L693)
 
 **章节来源**
 - [PRD.md:1-488](file://PRD.md#L1-L488)
-- [application.yml:1-43](file://src/main/resources/application.yml#L1-L43)
+- [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
 
 ## 核心组件
 
@@ -144,6 +153,7 @@ BE_MAPPER --> DB_NAV
 - **快速操作**：添加自选、加持仓、刷新数据等功能，支持实时数据更新
 - **数据标签**：显示数据截止日期和延迟提示，确保用户了解数据时效性
 - **数据源分析标签**：新增"数据源分析"标签页，提供详细的数据源准确度分析
+- **AI诊断标签**：新增"AI诊断"标签页，提供详细的基金AI分析报告和风险评估
 
 #### EstimateAnalysisTab组件
 **新增组件**：专门用于数据源分析的标签页组件，提供以下功能：
@@ -153,6 +163,16 @@ BE_MAPPER --> DB_NAV
 - **可信度评估**：基于历史准确度计算的数据源可信度评分
 - **补偿记录追踪**：显示预测数据补偿和实际净值发布的记录
 - **智能综合预估**：展示智能综合预估的详细信息和权重分布
+
+#### AiDiagnosisTab组件
+**新增组件**：专门用于AI智能诊断的标签页组件，提供以下功能：
+
+- **综合评分展示**：显示基金整体评分和投资建议
+- **多维度评分**：估值合理性、业绩表现、风险控制等维度评分
+- **详细分析报告**：估值分析、业绩分析、风险分析的详细解读
+- **持仓建议**：基于AI分析的投资建议和建议仓位比例
+- **风险提示**：针对基金特点的风险提示和注意事项
+- **适合人群**：基于风险等级和基金类型的适合人群分析
 
 #### 基金搜索结果页面 (SearchResult)
 基金搜索结果页面提供基金搜索和结果展示功能：
@@ -175,6 +195,7 @@ BE_MAPPER --> DB_NAV
 - 实时估值获取接口
 - 数据刷新接口
 - **数据源分析接口**：`/api/fund/{code}/estimate-analysis`
+- **AI诊断接口**：`/api/ai/fund/{code}/diagnosis`
 
 ### 后端核心组件
 
@@ -186,6 +207,7 @@ RESTful API控制器提供标准的HTTP接口：
 - `GET /api/fund/{code}/estimates` - 实时估值
 - `POST /api/fund/{code}/refresh` - 数据刷新
 - **新增** `GET /api/fund/{code}/estimate-analysis` - 数据源分析
+- **新增** `GET /api/ai/fund/{code}/diagnosis` - AI诊断报告
 
 #### 服务层
 FundService作为业务逻辑核心，协调各个数据源：
@@ -200,6 +222,13 @@ FundService作为业务逻辑核心，协调各个数据源：
 - 准确度统计计算
 - 可信度评估
 - 补偿记录追踪
+
+**新增** FundDiagnosisService提供AI智能诊断功能：
+- 基于规则引擎的综合评分计算
+- 多维度评分系统（业绩、风险、估值、稳定性、费率）
+- 投资建议生成
+- 风险评估和提示
+- 适合人群分析
 
 #### 数据源聚合器
 FundDataAggregator实现多数据源聚合和降级策略：
@@ -216,11 +245,14 @@ FundDataAggregator实现多数据源聚合和降级策略：
 
 **章节来源**
 - [AppLayout.tsx:1-127](file://fund-web/src/components/AppLayout.tsx#L1-L127)
-- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
+- [FundDetail.tsx:1-393](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L393)
+- [AiDiagnosisTab.tsx:1-306](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx#L1-L306)
 - [EstimateAnalysisTab.tsx:1-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L331)
 - [SearchResult.tsx:1-96](file://fund-web/src/pages/Fund/SearchResult.tsx#L1-L96)
+- [AiAnalysisController.java:1-40](file://src/main/java/com/qoder/fund/controller/AiAnalysisController.java#L1-L40)
 - [FundController.java:1-79](file://src/main/java/com/qoder/fund/controller/FundController.java#L1-L79)
 - [EstimateAnalysisService.java:1-305](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L1-L305)
+- [FundDiagnosisService.java:1-587](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java#L1-L587)
 - [FundService.java:1-75](file://src/main/java/com/qoder/fund/service/FundService.java#L1-L75)
 - [FundDataAggregator.java:1-693](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L1-L693)
 
@@ -233,6 +265,7 @@ participant Layout as AppLayout导航
 participant Controller as 基金控制器
 participant Service as 基金服务
 participant AnalysisService as 数据分析服务
+participant DiagnosisService as AI诊断服务
 participant Aggregator as 数据聚合器
 participant EastMoney as 东方财富数据源
 participant StockEstimate as 股票估算数据源
@@ -312,6 +345,32 @@ Controller-->>Client : JSON响应
 - [FundController.java:70-77](file://src/main/java/com/qoder/fund/controller/FundController.java#L70-L77)
 - [EstimateAnalysisService.java:42-62](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L42-62)
 - [EstimatePredictionMapper.java:20-31](file://src/main/java/com/qoder/fund/mapper/EstimatePredictionMapper.java#L20-31)
+
+### AI诊断分析架构
+
+```mermaid
+sequenceDiagram
+participant Client as 客户端
+participant Controller as AI分析控制器
+participant DiagnosisService as AI诊断服务
+participant DataSource as 天天基金数据源
+participant DB as 数据库
+Client->>Controller : GET /api/ai/fund/{code}/diagnosis
+Controller->>DiagnosisService : getFundDiagnosis(code)
+DiagnosisService->>DataSource : getFundDetail(code)
+DataSource-->>DiagnosisService : 基金数据
+DiagnosisService->>DiagnosisService : 计算各维度评分
+DiagnosisService->>DiagnosisService : 生成综合评分
+DiagnosisService->>DiagnosisService : 生成投资建议
+DiagnosisService->>DiagnosisService : 生成风险评估
+DiagnosisService->>DiagnosisService : 生成适合人群分析
+DiagnosisService-->>Controller : AiFundDiagnosisDTO
+Controller-->>Client : JSON响应
+```
+
+**图表来源**
+- [AiAnalysisController.java:27-38](file://src/main/java/com/qoder/fund/controller/AiAnalysisController.java#L27-L38)
+- [FundDiagnosisService.java:45-70](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java#L45-L70)
 
 ## 详细组件分析
 
@@ -398,6 +457,7 @@ class FundDetail {
 +renderPerformance() Table
 +renderHoldings() Table
 +renderIndustries() PieChart
++renderTabs() Tabs
 }
 class FundDetailDTO {
 +string code
@@ -433,7 +493,7 @@ FundDetailDTO --> EstimateItem : "包含"
 ```
 
 **图表来源**
-- [FundDetail.tsx:21-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L21-L362)
+- [FundDetail.tsx:21-393](file://fund-web/src/pages/Fund/FundDetail.tsx#L21-L393)
 - [fund.ts:9-65](file://fund-web/src/api/fund.ts#L9-L65)
 
 #### 数据获取流程优化
@@ -497,117 +557,157 @@ API-->>Page : 返回数据
    - 动态颜色标识涨跌状态
    - 悬停缩放效果，提升交互体验
 
-6. **数据源分析标签**：
+6. **标签页系统增强**：
+   - **数据源分析标签**：新增"数据源分析"标签页，展示实时数据源对比和准确度统计
+   - **AI诊断标签**：新增"AI诊断"标签页，提供详细的基金AI分析报告和风险评估
+   - **智能图标**：AI诊断标签使用机器人图标，提升识别度
+
+7. **数据源分析标签**：
    - 新增"数据源分析"标签页
    - 展示实时数据源对比
    - 提供准确度统计和可信度评估
    - 显示补偿记录追踪
 
 **章节来源**
-- [FundDetail.tsx:1-362](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L362)
+- [FundDetail.tsx:1-393](file://fund-web/src/pages/Fund/FundDetail.tsx#L1-L393)
 - [fund.ts:67-83](file://fund-web/src/api/fund.ts#L67-L83)
 
-### EstimateAnalysisTab组件分析
+### AiDiagnosisTab组件分析
 
 #### 组件结构设计
 ```mermaid
 classDiagram
-class EstimateAnalysisTab {
+class AiDiagnosisTab {
 +string fundCode
-+EstimateAnalysisData data
++AiFundDiagnosis diagnosis
 +boolean loading
++boolean error
 +useEffect() loadData()
-+renderCurrentEstimates() Card
-+renderSourceComparison() Table
-+renderAccuracyStats() Table
-+renderCompensationLogs() Table
++renderStars() StarFilled/StarOutlined
++renderRecommendation() Tag
++renderSuggestionColor() Color
++renderComprehensiveCard() Card
++renderDimensionScores() Row
++renderValuationAnalysis() Card
++renderPerformanceAnalysis() Card
++renderRiskAnalysis() Card
++renderPositionAdvice() Card
++renderRiskWarnings() Card
++renderSuitableFor() Row
 }
-class EstimateAnalysisData {
+class AiFundDiagnosis {
 +string fundCode
 +string fundName
-+CurrentEstimate currentEstimates
-+AccuracyStats accuracyStats
-+CompensationLog[] compensationLogs
++string diagnosisTime
++Integer overallScore
++String recommendation
++Integer confidenceLevel
++String summary
++DimensionScores dimensionScores
++ValuationAnalysis valuation
++PerformanceAnalysis performance
++RiskAnalysis risk
++PositionAdvice positionAdvice
++String[] riskWarnings
++String[] suitableFor
++String[] notSuitableFor
 }
-class CurrentEstimate {
-+number actualNav
-+number actualReturn
-+string actualNavDate
-+boolean actualReturnDelayed
-+SourceEstimate[] sources
-+SmartEstimate smartEstimate
+class DimensionScores {
++Integer valuation
++Integer performance
++Integer risk
++Integer stability
++Integer cost
 }
-class SourceEstimate {
-+string key
-+string label
-+number estimateNav
-+number estimateReturn
-+boolean available
-+number weight
-+number confidence
-+string description
+class ValuationAnalysis {
++String status
++BigDecimal pePercentile
++BigDecimal pbPercentile
++String description
 }
-class SmartEstimate {
-+number nav
-+number returnRate
-+string strategy
-+string scenario
-+boolean accuracyEnhanced
-+Map weights
-+string description
+class PerformanceAnalysis {
++String shortTerm
++String midTerm
++String longTerm
++String vsBenchmark
++String description
 }
-EstimateAnalysisTab --> EstimateAnalysisData : "使用"
-EstimateAnalysisData --> CurrentEstimate : "包含"
-CurrentEstimate --> SourceEstimate : "包含"
-CurrentEstimate --> SmartEstimate : "包含"
+class RiskAnalysis {
++Integer riskLevel
++String volatility
++String maxDrawdown
++String description
+}
+class PositionAdvice {
++String suggestion
++String reason
++BigDecimal suggestedRatio
+}
+AiDiagnosisTab --> AiFundDiagnosis : "使用"
+AiFundDiagnosis --> DimensionScores : "包含"
+AiFundDiagnosis --> ValuationAnalysis : "包含"
+AiFundDiagnosis --> PerformanceAnalysis : "包含"
+AiFundDiagnosis --> RiskAnalysis : "包含"
+AiFundDiagnosis --> PositionAdvice : "包含"
 ```
 
 **图表来源**
-- [EstimateAnalysisTab.tsx:11-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L11-L331)
-- [estimateAnalysis.ts:3-71](file://fund-web/src/api/estimateAnalysis.ts#L3-L71)
+- [AiDiagnosisTab.tsx:9-306](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx#L9-L306)
+- [fund.ts:69-111](file://fund-web/src/api/fund.ts#L69-L111)
 
-#### 数据分析功能实现
+#### AI诊断功能实现
 ```mermaid
 flowchart TD
-A[用户访问数据源分析] --> B[加载分析数据]
-B --> C[构建实时估值数据]
-C --> D[查询准确度统计]
-D --> E[计算可信度评分]
-E --> F[查询补偿记录]
-F --> G[渲染分析界面]
-G --> H[用户查看分析结果]
+A[用户访问AI诊断] --> B[加载诊断数据]
+B --> C[构建AI诊断数据]
+C --> D[计算各维度评分]
+D --> E[生成综合评分]
+E --> F[生成投资建议]
+F --> G[生成风险评估]
+G --> H[生成适合人群分析]
+H --> I[渲染诊断界面]
+I --> J[用户查看诊断结果]
 ```
 
 **图表来源**
-- [EstimateAnalysisTab.tsx:15-28](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L15-L28)
-- [EstimateAnalysisService.java:67-139](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L67-139)
+- [AiDiagnosisTab.tsx:18-31](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx#L18-L31)
+- [FundDiagnosisService.java:75-144](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java#L75-L144)
 
-#### 分析功能详解
+#### AI诊断功能详解
 
-1. **实时估值对比**：
-   - 展示各数据源的实时估值和当前权重
-   - 提供数据源可用性状态显示
-   - 支持可信度评分展示
+1. **综合评分系统**：
+   - **权重分配**：业绩表现40%、风险控制25%、估值合理性20%、稳定性10%、费率成本5%
+   - **评分计算**：基于加权平均计算综合评分(0-100分)
+   - **投资建议**：基于综合评分和业绩表现生成看涨/中性/看跌建议
 
-2. **准确度统计**：
-   - 基于历史预测数据计算平均误差(MAE)
-   - 统计命中率（误差小于0.5%的比例）
-   - 计算数据源评级（1-5星）
-   - 分析趋势变化（提升/稳定/下降）
+2. **多维度评分**：
+   - **估值合理性**：基于近期表现判断估值状态（偏高/适中/偏低）
+   - **业绩表现**：短期(6个月)、中期(1年)、长期(3年)表现评价
+   - **风险控制**：风险等级、波动率、最大回撤综合评估
+   - **稳定性**：基金规模、成立年限等稳定性因素
+   - **费率成本**：管理费率等成本因素
 
-3. **可信度评估**：
-   - 基于历史准确度计算可信度评分
-   - 0-1范围的数值表示，数值越大越可信
-   - 动态调整权重分配
+3. **详细分析报告**：
+   - **估值分析**：PE/PB历史分位数和估值状态解读
+   - **业绩分析**：短期、中期、长期业绩表现和相对基准评价
+   - **风险分析**：风险等级、波动率、最大回撤的专业解读
+   - **持仓建议**：基于AI分析的投资建议和建议仓位比例
 
-4. **补偿记录追踪**：
-   - 显示预测数据补偿历史
-   - 区分预测补偿和实际净值发布
-   - 提供详细的补偿说明
+4. **风险提示系统**：
+   - **风险等级提示**：基于风险等级的警告信息
+   - **业绩表现提示**：基于近一年业绩的提醒
+   - **近期涨幅提示**：基于近期涨幅的风险提示
+   - **智能组合提示**：自动化的风险提示生成
+
+5. **适合人群分析**：
+   - **适合人群**：基于基金类型和风险评分的适合人群
+   - **不适合人群**：基于风险等级和评分的不适合人群
+   - **个性化建议**：针对不同风险偏好的投资建议
 
 **章节来源**
-- [EstimateAnalysisTab.tsx:1-331](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L1-L331)
-- [EstimateAnalysisDTO.java:1-148](file://src/main/java/com/qoder/fund/dto/EstimateAnalysisDTO.java#L1-L148)
+- [AiDiagnosisTab.tsx:1-306](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx#L1-L306)
+- [AiFundDiagnosisDTO.java:1-130](file://src/main/java/com/qoder/fund/dto/AiFundDiagnosisDTO.java#L1-L130)
+- [FundDiagnosisService.java:1-587](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java#L1-L587)
 
 ### 数据聚合器组件分析
 
@@ -721,7 +821,7 @@ I --> S
 
 **图表来源**
 - [PRD.md:403-425](file://PRD.md#L403-L425)
-- [application.yml:1-43](file://src/main/resources/application.yml#L1-L43)
+- [application.yml:1-68](file://src/main/resources/application.yml#L1-L68)
 
 ### 数据模型依赖
 
@@ -792,12 +892,15 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 1. **应用级缓存**：Caffeine缓存，配置最大1000条，过期时间300秒
 2. **数据源缓存**：针对搜索、详情、净值历史、实时估值分别缓存
 3. **数据库缓存**：热点数据缓存，减少数据库访问压力
+4. **AI诊断缓存**：专门的AI诊断缓存管理器，15分钟过期时间
+5. **数据分析缓存**：独立的分析缓存管理器，支持AI诊断、调仓建议等
 
 ### 异步处理
 - 基金搜索支持异步响应
 - 净值历史查询支持时间段过滤
 - 实时估值采用多源并发获取
 - **数据源分析采用异步加载**：避免阻塞主页面渲染
+- **AI诊断采用异步加载**：提升用户体验，避免长时间等待
 
 ### 前端优化
 - 图表渲染优化，使用ECharts高性能渲染
@@ -805,7 +908,8 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 - 数据格式化函数优化，减少重复计算
 - **导航持久性优化**：通过useRef避免不必要的重渲染
 - **智能估值缓存**：多源估值结果缓存，减少重复计算
-- **标签页懒加载**：数据源分析标签页仅在激活时加载
+- **标签页懒加载**：数据源分析和AI诊断标签页仅在激活时加载
+- **AI诊断缓存**：诊断结果缓存15分钟，提升重复访问性能
 
 ### 导航持久性性能优化
 - 使用useRef存储lastSearchPath，避免状态更新触发重渲染
@@ -824,11 +928,13 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 - **条件查询**：准确度统计使用精确的时间范围查询
 - **索引优化**：数据库表建立适当的索引支持快速查询
 - **缓存统计结果**：频繁访问的统计数据进行缓存
+- **AI诊断缓存**：诊断结果缓存15分钟，避免重复计算
 
 **章节来源**
 - [AppLayout.tsx:24-32](file://fund-web/src/components/AppLayout.tsx#L24-L32)
 - [FundDetail.tsx:35-70](file://fund-web/src/pages/Fund/FundDetail.tsx#L35-L70)
-- [EstimateAnalysisTab.tsx:15-28](file://fund-web/src/pages/Fund/EstimateAnalysisTab.tsx#L15-L28)
+- [AiDiagnosisTab.tsx:18-31](file://fund-web/src/pages/Fund/AiDiagnosisTab.tsx#L18-L31)
+- [CacheConfig.java:62-67](file://src/main/java/com/qoder/fund/config/CacheConfig.java#L62-L67)
 
 ## 故障排除指南
 
@@ -865,11 +971,18 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 3. **查看预测数据**：确认预测数据表中有足够的历史数据
 4. **检查权限配置**：确认数据库用户有适当的查询权限
 
+#### AI诊断功能异常
+1. **检查数据源连接**：确认天天基金数据源可访问
+2. **验证评分计算**：检查各维度评分计算逻辑
+3. **查看缓存状态**：确认AI诊断缓存正常工作
+4. **检查日志输出**：查看AI诊断服务的日志信息
+
 **章节来源**
 - [FundDataAggregator.java:158-169](file://src/main/java/com/qoder/fund/datasource/FundDataAggregator.java#L158-L169)
 - [application.yml:18-21](file://src/main/resources/application.yml#L18-L21)
 - [AppLayout.tsx:26-32](file://fund-web/src/components/AppLayout.tsx#L26-L32)
 - [EstimateAnalysisService.java:144-156](file://src/main/java/com/qoder/fund/service/EstimateAnalysisService.java#L144-156)
+- [FundDiagnosisService.java:45-70](file://src/main/java/com/qoder/fund/service/FundDiagnosisService.java#L45-70)
 
 ## 结论
 
@@ -882,6 +995,7 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 5. **导航持久性增强**：新增的路径跟踪机制显著改善了用户在"基金查询"区域内的浏览体验
 6. **智能估值系统**：多数据源估值切换和智能综合预估，提供更准确的投资参考
 7. **数据分析能力增强**：新增的数据源分析功能，提供详细的数据质量评估和趋势分析
+8. **AI智能诊断系统**：基于规则引擎的综合评分系统，提供多维度投资建议和风险评估
 
 **更新亮点**：
 - **基金详情页面重大改进**：新增智能估值切换功能，支持多数据源对比
@@ -893,5 +1007,10 @@ ESTIMATE_PREDICTION }|--|| FUND : "fund_code"
 - **数据源分析标签**：新增EstimateAnalysisTab组件，提供详细的数据源准确度分析
 - **智能综合预估**：基于历史准确度的智能权重调整和可信度评估
 - **补偿记录追踪**：完整的预测数据补偿和实际净值发布记录
+- **AI诊断标签页**：新增AiDiagnosisTab组件，提供详细的基金AI分析报告和风险评估
+- **多维度评分系统**：基于规则引擎的综合评分，涵盖估值、业绩、风险、稳定性、费率等多个维度
+- **智能投资建议**：基于AI分析的投资建议和建议仓位比例
+- **风险提示系统**：自动化的风险提示生成，帮助用户规避潜在风险
+- **适合人群分析**：基于基金类型和风险评分的人群匹配分析
 
-项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。新增的数据源分析功能进一步提升了系统的专业性和实用性，为用户提供更深入的数据洞察和更可靠的估值参考。
+项目的实施为个人投资者提供了专业的基金数据管理和分析工具，有助于提高投资决策的质量和效率。通过持续的功能迭代和性能优化，系统将更好地服务于目标用户群体。新增的AI诊断功能进一步提升了系统的智能化水平，为用户提供更深入的数据洞察和更可靠的估值参考，真正实现了从"数据聚合"到"智能分析"的升级转型。

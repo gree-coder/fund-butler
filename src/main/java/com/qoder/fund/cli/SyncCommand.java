@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 import picocli.CommandLine;
 
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 /**
@@ -89,6 +91,9 @@ public class SyncCommand implements Callable<Integer> {
         private final FundDataSyncScheduler scheduler;
         private final TradingCalendarService tradingCalendarService;
 
+        @CommandLine.Option(names = {"--max-retries"}, description = "最大重试次数", defaultValue = "2")
+        private int maxRetries;
+
         @Override
         public Integer call() {
             LocalDate today = LocalDate.now();
@@ -103,17 +108,55 @@ public class SyncCommand implements Callable<Integer> {
 
             if (qdiiOnly) {
                 System.out.println("仅处理 QDII 基金");
-                scheduler.snapshotQdiiFundPredictions();
+                snapshotWithRetry(false);
             } else {
                 // 先快照 A 股基金
-                scheduler.snapshotDomesticFundPredictions();
+                snapshotWithRetry(true);
                 // 再快照 QDII 基金
-                scheduler.snapshotQdiiFundPredictions();
+                snapshotWithRetry(false);
             }
 
             long elapsed = System.currentTimeMillis() - start;
             System.out.println("估值快照完成，耗时 " + elapsed + "ms");
             return 0;
+        }
+
+        /**
+         * 带重试的快照逻辑：首轮全量 → 检查失败 → 指数退避等待 → 仅重试失败基金
+         */
+        private void snapshotWithRetry(boolean domesticOnly) {
+            String label = domesticOnly ? "A股" : "QDII";
+            Set<String> fundCodes = scheduler.getTrackedFundCodes();
+            FundDataSyncScheduler.SnapshotResult result = scheduler.snapshotEstimates(fundCodes, domesticOnly);
+
+            System.out.printf("  %s首轮: 保存 %d 条, 跳过 %d 只, 失败 %d 只%n",
+                    label, result.getSaved(), result.getSkipped(), result.getFailedCodes().size());
+
+            // 重试失败基金，指数退避: 10s → 20s → 40s
+            int retryWaitSeconds = 10;
+            for (int attempt = 1; attempt <= maxRetries && result.hasFailures(); attempt++) {
+                System.out.printf("  %s重试 %d/%d: 等待 %ds 后重试 %d 只失败基金...%n",
+                        label, attempt, maxRetries, retryWaitSeconds, result.getFailedCodes().size());
+                try {
+                    Thread.sleep(retryWaitSeconds * 1000L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.out.println("  重试被中断");
+                    return;
+                }
+
+                Set<String> retrySet = new HashSet<>(result.getFailedCodes());
+                result = scheduler.snapshotEstimates(retrySet, domesticOnly);
+
+                System.out.printf("  %s重试 %d 结果: 保存 %d 条, 仍失败 %d 只%n",
+                        label, attempt, result.getSaved(), result.getFailedCodes().size());
+                retryWaitSeconds *= 2;
+            }
+
+            if (result.hasFailures()) {
+                System.out.printf("  ⚠ %s仍有 %d 只基金快照失败: %s%n",
+                        label, result.getFailedCodes().size(), result.getFailedCodes());
+            }
         }
     }
 
@@ -229,10 +272,9 @@ public class SyncCommand implements Callable<Integer> {
                 System.out.println("\n[2/5] 同步净值数据...");
                 scheduler.syncDailyNav();
 
-                // 3. 快照估值
+                // 3. 快照估值（带重试）
                 System.out.println("\n[3/5] 快照估值预测...");
-                scheduler.snapshotDomesticFundPredictions();
-                scheduler.snapshotQdiiFundPredictions();
+                snapshotAllWithRetry();
 
                 // 4. 评估预测
                 System.out.println("\n[4/5] 评估预测准确度...");
@@ -253,6 +295,48 @@ public class SyncCommand implements Callable<Integer> {
             System.out.println("====================================");
 
             return 0;
+        }
+
+        /**
+         * 全量快照（A股+QDII），带重试
+         */
+        private void snapshotAllWithRetry() {
+            int maxRetries = 2;
+            Set<String> fundCodes = scheduler.getTrackedFundCodes();
+
+            // A股快照
+            retrySnapshot(fundCodes, true, "A股", maxRetries);
+            // QDII快照
+            retrySnapshot(fundCodes, false, "QDII", maxRetries);
+        }
+
+        private void retrySnapshot(Set<String> fundCodes, boolean domesticOnly,
+                                   String label, int maxRetries) {
+            FundDataSyncScheduler.SnapshotResult result = scheduler.snapshotEstimates(fundCodes, domesticOnly);
+            System.out.printf("  %s首轮: 保存 %d 条, 失败 %d 只%n",
+                    label, result.getSaved(), result.getFailedCodes().size());
+
+            int retryWaitSeconds = 10;
+            for (int attempt = 1; attempt <= maxRetries && result.hasFailures(); attempt++) {
+                System.out.printf("  %s重试 %d/%d: 等待 %ds...%n",
+                        label, attempt, maxRetries, retryWaitSeconds);
+                try {
+                    Thread.sleep(retryWaitSeconds * 1000L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                Set<String> retrySet = new HashSet<>(result.getFailedCodes());
+                result = scheduler.snapshotEstimates(retrySet, domesticOnly);
+                System.out.printf("  %s重试 %d 结果: 保存 %d 条, 仍失败 %d 只%n",
+                        label, attempt, result.getSaved(), result.getFailedCodes().size());
+                retryWaitSeconds *= 2;
+            }
+
+            if (result.hasFailures()) {
+                System.out.printf("  ⚠ %s仍有 %d 只基金快照失败: %s%n",
+                        label, result.getFailedCodes().size(), result.getFailedCodes());
+            }
         }
     }
 }

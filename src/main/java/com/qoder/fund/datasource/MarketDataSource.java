@@ -26,8 +26,11 @@ public class MarketDataSource {
     // 新浪大盘指数API
     private static final String SINA_INDEX_API = "https://hq.sinajs.cn/list=%s";
 
-    // 新浪K线历史API
+    // 新浪K线历史API（A股）
     private static final String SINA_KLINE_API = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData";
+
+    // 东方财富K线历史API（港股/美股）
+    private static final String EASTMONEY_KLINE_API = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
 
     // A股大盘指数代码映射（新浪简化格式）
     private static final String[][] INDEX_CODES = {
@@ -271,7 +274,7 @@ public class MarketDataSource {
         return index;
     }
 
-    // K线API使用的指数代码（仅A股，不带s_前缀）
+    // K线API使用的指数代码（A股，新浪格式）
     private static final String[][] KLINE_INDEX_CODES = {
             {"sh000001", "上证指数"},
             {"sz399001", "深证成指"},
@@ -279,13 +282,23 @@ public class MarketDataSource {
             {"sh000300", "沪深300"}
     };
 
+    // 海外指数K线API使用的代码（东方财富格式: secid = 市场ID.代码）
+    // 港股HSI=100, 恒生科技=124, 美股指数=100
+    private static final String[][] OVERSEAS_KLINE_CODES = {
+            {"100.HSI", "hkHSI", "恒生指数"},
+            {"124.HSTECH", "hkHSTECH", "恒生科技"},
+            {"100.SPX", "gb_inx", "标普500"},
+            {"100.NDX", "gb_ixic", "纳斯达克"}
+    };
+
     /**
-     * 获取大盘指数近期K线走势
+     * 获取大盘指数近期K线走势（A股 + 港股 + 美股）
      * @param days 天数（交易日）
      */
     public List<MarketOverviewDTO.IndexTrend> getIndexTrends(int days) {
         List<MarketOverviewDTO.IndexTrend> trends = new ArrayList<>();
 
+        // 1. 获取A股指数K线（新浪API）
         for (String[] indexInfo : KLINE_INDEX_CODES) {
             String code = indexInfo[0];
             String name = indexInfo[1];
@@ -303,7 +316,7 @@ public class MarketDataSource {
 
                 try (Response response = httpClient.newCall(request).execute()) {
                     if (!response.isSuccessful() || response.body() == null) {
-                        log.warn("获取指数K线数据失败: code={}, HTTP {}", code, response.code());
+                        log.warn("获取A股指数K线数据失败: code={}, HTTP {}", code, response.code());
                         continue;
                     }
 
@@ -314,11 +327,150 @@ public class MarketDataSource {
                     }
                 }
             } catch (Exception e) {
-                log.warn("获取指数K线数据异常: code={}", code, e);
+                log.warn("获取A股指数K线数据异常: code={}", code, e);
+            }
+        }
+
+        // 2. 获取海外指数K线（东方财富API）
+        try {
+            List<MarketOverviewDTO.IndexTrend> overseasTrends = fetchOverseasIndexTrends(days);
+            trends.addAll(overseasTrends);
+        } catch (Exception e) {
+            log.error("获取海外指数K线数据异常", e);
+        }
+
+        return trends;
+    }
+
+    /**
+     * 获取海外指数K线数据（港股 + 美股）
+     * 使用东方财富API
+     */
+    private List<MarketOverviewDTO.IndexTrend> fetchOverseasIndexTrends(int days) {
+        List<MarketOverviewDTO.IndexTrend> trends = new ArrayList<>();
+
+        for (String[] indexInfo : OVERSEAS_KLINE_CODES) {
+            String secid = indexInfo[0];
+            String outputCode = indexInfo[1];
+            String name = indexInfo[2];
+
+            try {
+                // 东方财富K线API参数
+                // klt=101 日线, fqt=0 不复权（指数不需要复权）
+                String url = EASTMONEY_KLINE_API
+                        + "?secid=" + secid
+                        + "&fields1=f1,f2,f3,f4,f5,f6"
+                        + "&fields2=f51,f52,f53,f54,f55,f56,f57"
+                        + ",f58,f59,f60,f61"
+                        + "&klt=101&fqt=0"
+                        + "&lmt=" + (days + 5)
+                        + "&end=20500101"
+                        + "&_=" + System.currentTimeMillis();
+
+                Request request = new Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+                        .header("Referer", "https://quote.eastmoney.com/")
+                        .build();
+
+                try (Response response = httpClient.newCall(request).execute()) {
+                    if (!response.isSuccessful() || response.body() == null) {
+                        log.warn("获取海外指数K线数据失败: secid={}, HTTP {}", secid, response.code());
+                        continue;
+                    }
+
+                    String body = response.body().string();
+                    MarketOverviewDTO.IndexTrend trend = parseEastMoneyKLineData(outputCode, name, body, days);
+                    if (trend != null) {
+                        trends.add(trend);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("获取海外指数K线数据异常: secid={}", secid, e);
             }
         }
 
         return trends;
+    }
+
+    /**
+     * 解析东方财富K线数据
+     * 返回格式: {"data":{"klines":["日期,开,收,高,低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率",...]}}
+     */
+    private MarketOverviewDTO.IndexTrend parseEastMoneyKLineData(String code, String name, String body, int days) {
+        try {
+            if (body == null || body.trim().isEmpty() || body.contains("\"data\":null")) {
+                return null;
+            }
+
+            // 查找klines数组
+            int klinesIdx = body.indexOf("\"klines\":");
+            if (klinesIdx < 0) {
+                return null;
+            }
+
+            int arrayStart = body.indexOf("[", klinesIdx);
+            int arrayEnd = body.indexOf("]", arrayStart);
+            if (arrayStart < 0 || arrayEnd <= arrayStart) {
+                return null;
+            }
+
+            String arrayContent = body.substring(arrayStart + 1, arrayEnd);
+            // 分割每个K线条目
+            String[] items = arrayContent.split("\\\"\\s*,\\s*\\\"");
+
+            MarketOverviewDTO.IndexTrend trend = new MarketOverviewDTO.IndexTrend();
+            trend.setCode(code);
+            trend.setName(name);
+            List<MarketOverviewDTO.DailyKLine> dailyData = new ArrayList<>();
+
+            // 从最新的数据开始取 days 条
+            int startIdx = Math.max(0, items.length - days);
+
+            for (int i = startIdx; i < items.length; i++) {
+                String item = items[i].replace("\"", "").trim();
+                if (item.isEmpty()) continue;
+
+                // 东方财富K线格式: 日期,开,收,高,低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率
+                String[] parts = item.split(",");
+                if (parts.length < 6) continue;
+
+                MarketOverviewDTO.DailyKLine kline = new MarketOverviewDTO.DailyKLine();
+                kline.setDate(parts[0]); // 日期
+                kline.setOpen(parseBigDecimal(parts[1])); // 开盘
+                kline.setClose(parseBigDecimal(parts[2])); // 收盘
+                kline.setHigh(parseBigDecimal(parts[3])); // 最高
+                kline.setLow(parseBigDecimal(parts[4])); // 最低
+                kline.setVolume(parseLong(parts[5])); // 成交量
+                if (parts.length >= 7) {
+                    kline.setTurnover(parseBigDecimal(parts[6])); // 成交额
+                }
+                if (parts.length >= 9) {
+                    kline.setChangePercent(parseBigDecimal(parts[8])); // 涨跌幅(%)
+                }
+
+                dailyData.add(kline);
+            }
+
+            trend.setDailyData(dailyData);
+
+            // 计算区间涨跌幅（首日收盘到末日收盘）
+            if (dailyData.size() >= 2) {
+                BigDecimal firstClose = dailyData.get(0).getClose();
+                BigDecimal lastClose = dailyData.get(dailyData.size() - 1).getClose();
+                if (firstClose != null && firstClose.compareTo(BigDecimal.ZERO) > 0 && lastClose != null) {
+                    trend.setPeriodChangePercent(lastClose.subtract(firstClose)
+                            .multiply(new BigDecimal("100"))
+                            .divide(firstClose, 2, RoundingMode.HALF_UP));
+                }
+            }
+
+            return trend;
+
+        } catch (Exception e) {
+            log.warn("解析东方财富K线数据失败: code={}", code, e);
+            return null;
+        }
     }
 
     /**

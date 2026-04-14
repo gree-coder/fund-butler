@@ -202,6 +202,11 @@ public class MarketOverviewDTO {
         private Long volume;
 
         /**
+         * 成交额
+         */
+        private BigDecimal turnover;
+
+        /**
          * 当日涨跌幅(%)
          */
         private BigDecimal changePercent;
