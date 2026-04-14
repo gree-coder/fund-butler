@@ -454,16 +454,8 @@ public class MarketDataSource {
 
             trend.setDailyData(dailyData);
 
-            // 计算区间涨跌幅（首日收盘到末日收盘）
-            if (dailyData.size() >= 2) {
-                BigDecimal firstClose = dailyData.get(0).getClose();
-                BigDecimal lastClose = dailyData.get(dailyData.size() - 1).getClose();
-                if (firstClose != null && firstClose.compareTo(BigDecimal.ZERO) > 0 && lastClose != null) {
-                    trend.setPeriodChangePercent(lastClose.subtract(firstClose)
-                            .multiply(new BigDecimal("100"))
-                            .divide(firstClose, 2, RoundingMode.HALF_UP));
-                }
-            }
+            // 计算区间涨跌幅
+            calcPeriodChanges(trend, dailyData);
 
             return trend;
 
@@ -528,16 +520,8 @@ public class MarketDataSource {
 
             trend.setDailyData(dailyData);
 
-            // 计算区间涨跌幅（首日开盘到末日收盘）
-            if (dailyData.size() >= 2) {
-                BigDecimal firstClose = dailyData.get(0).getClose();
-                BigDecimal lastClose = dailyData.get(dailyData.size() - 1).getClose();
-                if (firstClose != null && firstClose.compareTo(BigDecimal.ZERO) > 0 && lastClose != null) {
-                    trend.setPeriodChangePercent(lastClose.subtract(firstClose)
-                            .multiply(new BigDecimal("100"))
-                            .divide(firstClose, 2, RoundingMode.HALF_UP));
-                }
-            }
+            // 计算区间涨跌幅（首日收盘到末日收盘）
+            calcPeriodChanges(trend, dailyData);
 
             return trend;
 
@@ -602,6 +586,44 @@ public class MarketDataSource {
         sector.setLeadingStock(leadingStock);
         sector.setTrend(trend);
         return sector;
+    }
+
+    /**
+     * 计算指数K线的区间涨跌幅（近5日、5日、10日）
+     */
+    private void calcPeriodChanges(
+            MarketOverviewDTO.IndexTrend trend,
+            List<MarketOverviewDTO.DailyKLine> dailyData) {
+        if (dailyData == null || dailyData.isEmpty()) {
+            return;
+        }
+        BigDecimal lastClose =
+                dailyData.get(dailyData.size() - 1).getClose();
+
+        // 近10日涨跌幅 = 全部数据的区间涨跌幅
+        trend.setPeriodChangePercent(
+                calcChange(dailyData.get(0).getClose(),
+                        lastClose));
+        trend.setChange10d(
+                trend.getPeriodChangePercent());
+
+        // 近5日涨跌幅 = 取末尾5条
+        int size5 = Math.min(5, dailyData.size());
+        BigDecimal base5 =
+                dailyData.get(dailyData.size() - size5)
+                        .getClose();
+        trend.setChange5d(calcChange(base5, lastClose));
+    }
+
+    private BigDecimal calcChange(
+            BigDecimal base, BigDecimal current) {
+        if (base == null || current == null
+                || base.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        return current.subtract(base)
+                .multiply(new BigDecimal("100"))
+                .divide(base, 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal parseBigDecimal(String value) {

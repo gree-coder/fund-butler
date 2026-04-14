@@ -164,6 +164,16 @@ public class MarketOverviewDTO {
          * 区间涨跌幅(%)
          */
         private BigDecimal periodChangePercent;
+
+        /**
+         * 近5日涨跌幅(%)
+         */
+        private BigDecimal change5d;
+
+        /**
+         * 近10日涨跌幅(%)
+         */
+        private BigDecimal change10d;
     }
 
     /**

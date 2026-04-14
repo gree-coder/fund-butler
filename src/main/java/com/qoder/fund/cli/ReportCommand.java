@@ -181,6 +181,8 @@ public class ReportCommand implements Callable<Integer> {
                         trendMap.put("code", trend.getCode());
                         trendMap.put("name", trend.getName());
                         trendMap.put("periodChangePercent", trend.getPeriodChangePercent());
+                        trendMap.put("change5d", trend.getChange5d());
+                        trendMap.put("change10d", trend.getChange10d());
                         if (trend.getDailyData() != null) {
                             List<Map<String, Object>> dailyList = new ArrayList<>();
                             for (MarketOverviewDTO.DailyKLine kline : trend.getDailyData()) {

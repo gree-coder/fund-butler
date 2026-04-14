@@ -97,8 +97,8 @@ public class MarketOverviewService {
             overview.setLeadingSectors(sectorDataSource.getLeadingSectors());
             overview.setDecliningSectors(sectorDataSource.getDecliningSectors());
 
-            // 3. 获取大盘指数近期走势（近5个交易日）
-            List<MarketOverviewDTO.IndexTrend> indexTrends = marketDataSource.getIndexTrends(5);
+            // 3. 获取大盘指数近期走势（近10个交易日）
+            List<MarketOverviewDTO.IndexTrend> indexTrends = marketDataSource.getIndexTrends(10);
             overview.setIndexTrends(indexTrends);
 
             // 4. 分析市场情绪
